@@ -9,9 +9,13 @@ import habitat_sim
 import numpy as np
 
 from scipy.spatial.transform import Rotation as R
+from pathlib import Path
 
-from sim_wrapper import PolarAction, SimWrapper
-from utils import *  # expects log_exception, etc.
+from .sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
+from .utils import *
+
+
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def get_quat_from_heading_angle(heading_angle_deg: float) -> np.ndarray:
@@ -32,23 +36,35 @@ def get_quat_from_heading_angle(heading_angle_deg: float) -> np.ndarray:
 class ObjectNavEnv:
     def __init__(self, cfg: dict):
         self.cfg = cfg
+        self.sim_cfg = self.cfg["sim_cfg"]
+        self.env_cfg = self.cfg["env_cfg"]
+
+        # Make sim paths repo-root-relative
+        self.sim_cfg["scene_path_root"] = str((REPO_ROOT / self.sim_cfg["scene_path_root"]).resolve())
+        self.sim_cfg["scene_config"] = str((REPO_ROOT / self.sim_cfg["scene_config"]).resolve())
+
+        # Make dataset path repo-root-relative (optional, you already do it later)
+        self.env_cfg["dataset_root_path"] = str((REPO_ROOT / self.env_cfg["dataset_root_path"]).resolve())
 
     def _initialize_experiment(self) -> None:
         self.all_episodes = []
         self.goals = {}
 
         # Load all episodes + goals for the chosen split
-        split = self.cfg["split"]
-        dataset_root = os.path.join(self.cfg['root_path'], split, "content")
+        split = self.env_cfg["split"]
+        dataset_root_path = os.path.join(REPO_ROOT, self.env_cfg['dataset_root_path'])
+        dataset_content_path = os.path.join(dataset_root_path, split, "content")
 
-        for f in sorted(os.listdir(dataset_root)):
-            file_path = os.path.join(dataset_root, f)
+        for f in sorted(os.listdir(dataset_content_path)):
+            file_path = os.path.join(dataset_content_path, f)
             with gzip.open(file_path, "rt") as gz:
                 js = json.load(gz)
                 hsh = f.split(".")[0]
                 # goals_by_category stored under this key
                 self.goals[hsh] = js["goals_by_category"]
                 self.all_episodes += js["episodes"]
+
+        self.all_episodes = sorted(self.all_episodes, key=lambda e: int(e["episode_id"]))
 
         self.num_episodes = len(self.all_episodes)
         logging.info(
@@ -57,7 +73,6 @@ class ObjectNavEnv:
 
     def _initialize_episode(self, episode_ndx: int):
         episode = self.all_episodes[episode_ndx]
-
         # Example episode["scene_id"]:
         #   "hm3d/val/00877-4ok3usBNeis/4ok3usBNeis.basis.glb"
         scene_parts = episode["scene_id"].split("/")[1:]  # drop leading root
@@ -69,17 +84,13 @@ class ObjectNavEnv:
         # Full path to the .glb file
         self.sim_cfg["scene_path"] = os.path.join(
             self.sim_cfg["scene_path_root"], 
-            self.cfg['split'], 
+            self.env_cfg['split'], 
             scene_parts[1], 
             scene_parts[2]
         )
 
-        # Create simulator wrapper for this scene
         self.simWrapper = SimWrapper(self.sim_cfg)
 
-        # Lookup all goal objects and their view points
-        # Use the part of the scene folder name after the first 6 chars to
-        # index into self.goals (matches dataset naming convention).
         goals = self.goals[scene_parts[1][6:]]
         all_objects = goals[f"{scene_parts[-1]}_{episode['object_category']}"]
 
@@ -99,8 +110,15 @@ class ObjectNavEnv:
         # Initialize simulator state and get first observation
         self.simWrapper.set_state(pos=self.init_pos, quat=self.init_rot)
         self.curr_run_name = f"{episode_ndx}_{self.simWrapper.scene_id}"
+        self.step_count = 0
 
     def step(self, agent_actions):
         self.step_count += 1
         return self.simWrapper.step(agent_actions)
-
+    
+    def reset(self):
+        self.step_count = 0
+        return self.simWrapper.step(NULL_ACTION)
+    
+    def close(self):
+        self.simWrapper.close()

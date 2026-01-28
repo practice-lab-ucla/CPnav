@@ -5,7 +5,7 @@ import magnum as mn
 import numpy as np
 
 from habitat_sim.utils.common import quat_from_angle_axis, quat_to_angle_axis
-from utils import local_to_global
+from .utils import local_to_global
 
 from typing import Optional
 
@@ -31,8 +31,8 @@ class PolarAction:
         self.type = type
 
 # Global sentinel instances
-PolarAction.stop = PolarAction(0.0, 0.0, "stop")
-PolarAction.null = PolarAction(0.0, 0.0, "null")
+STOP_ACTION = PolarAction(0.0, 0.0, "stop")
+NULL_ACTION = PolarAction(0.0, 0.0, "null")
 
 
 class SimWrapper:
@@ -337,7 +337,7 @@ class SimWrapper:
             logging.info("NO PATH FOUND")
             return 1000.0
 
-    def reset(self) -> None:
+    def close(self) -> None:
         """
         Close the simulator to clean up memory / GPU resources.
         """

@@ -46,6 +46,36 @@ agent_cfg:
     model_kwargs:
       model: gpt-5-nano
 
+  action_proposer_cfg:
+    num_theta: 60
+    max_action_dist: 1.7
+    min_action_dist: 0.3
+
+    # Ray casting knobs
+    obstacle_height_m: 0.10
+    corridor_half_width_m: 0.15
+    stop_margin_m: 0.05
+    stride: 4
+
+    # Angle / sensor range
+    sensor_range_deg: null        # Optional
+    sensor_range_cap_deg: 85.0
+    ray_max_range_m: 6.0
+
+    # Refinement knobs
+    hard_spacing_deg: 20.0
+    filter_thresh: 0.75
+    clip_frac: 0.8
+    observe_frac: 0.5
+
+    # Explore bias (optional)
+    enable: true
+    weight: 1.0   # bigger => allow more close angles if unexplored
+
+    # Projection knobs for overlay
+    image_edge_threshold: 0.04    # reject endpoints near borders
+
+
 sim_cfg:
   agent_height: 0.9
   agent_radius: 0.1
@@ -58,11 +88,11 @@ sim_cfg:
     res_factor: 1
     fov: 131
   
-  scene_config: /home/qizhao/project2/CPNav/data/scene_datasets/hm3d/hm3d_annotated_basis.scene_dataset_config.json
-  scene_path_root: /home/qizhao/project2/CPNav/data/scene_datasets/hm3d/
+  scene_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+  scene_path_root: data/versioned_data/hm3d-0.2/hm3d/
 
 env_cfg:
-  root_path: /home/qizhao/project2/CPNav/data/datasets/objectnav_hm3d_v2
+  dataset_root_path: data/datasets/objectnav_hm3d_v2
   num_episodes: 1
   max_steps: 20
   log_freq: 1
