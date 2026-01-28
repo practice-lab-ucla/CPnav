@@ -1,0 +1,73 @@
+task: ObjectNav
+agent_cls: ObjectNavAgent
+env_cls: ObjectNavEnv
+
+agent_cfg:
+  # one of ['none', 'depth_estimate', 'segmentation', 'depth_sensor']
+  navigability_mode: depth_sensor
+
+  project: true
+  pivot: false
+  context_history: 0
+  explore_bias: 4
+
+  vlm_score_threshold: 0.5
+
+  meters_per_pixel: 0.005
+  grid_spacing_m: 0.7
+  discourage_ratio: 0.4
+
+  # VLM-based calibration
+  max_action_dist_calibration: 2.5
+  max_action_dist: 1.7
+  min_action_dist: 0.3
+
+  clip_frac: 1.0
+  observe_frac: 0.5
+
+  stopping_action_dist: 1.3
+  default_action: 0.0
+
+  spacing_ratio: 360
+  hard_spacing: 0.349066
+  num_theta: 60
+  image_edge_threshold: 0.04
+  turn_around_cooldown: 0
+
+  agent_radius: 0.1
+  clearance_m: 0.05
+  Depth_aware: true
+
+  navigability_height_threshold: 0.2
+  map_scale: 100
+
+  vlm_cfg:
+    model_cls: ChatGPTVLM
+    model_kwargs:
+      model: gpt-5-nano
+
+sim_cfg:
+  agent_height: 0.9
+  agent_radius: 0.1
+  allow_slide: true
+  use_goal_image_agent: false
+
+  sensor_cfg:
+    height: 0.9
+    pitch: -0.45
+    res_factor: 1
+    fov: 131
+
+env_cfg:
+  root_path: /home/qizhao/project2/CPNav/data/datasets/objectnav_hm3d_v2
+  num_episodes: 1
+  max_steps: 20
+  log_freq: 1
+  split: val
+  success_threshold: 0.3
+  instances: 1
+  instance: 0
+  parallel: false
+  name: default
+  port: 5000
+  d_goal: 2.0
