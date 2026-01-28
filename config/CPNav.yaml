@@ -57,6 +57,9 @@ sim_cfg:
     pitch: -0.45
     res_factor: 1
     fov: 131
+  
+  scene_config: /home/qizhao/project2/CPNav/data/scene_datasets/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+  scene_path_root: /home/qizhao/project2/CPNav/data/scene_datasets/hm3d/
 
 env_cfg:
   root_path: /home/qizhao/project2/CPNav/data/datasets/objectnav_hm3d_v2
