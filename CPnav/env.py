@@ -64,7 +64,7 @@ class ObjectNavEnv:
                 self.goals[hsh] = js["goals_by_category"]
                 self.all_episodes += js["episodes"]
 
-        self.all_episodes = sorted(self.all_episodes, key=lambda e: int(e["episode_id"]))
+        # self.all_episodes = sorted(self.all_episodes, key=lambda e: int(e["episode_id"]))
 
         self.num_episodes = len(self.all_episodes)
         logging.info(

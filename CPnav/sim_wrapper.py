@@ -73,8 +73,8 @@ class SimWrapper:
         self.fov = sensor_cfg["fov"]
         self.sensor_height = sensor_cfg["height"]
         self.resolution = (
-            1080 // sensor_cfg["res_factor"],
-            1920 // sensor_cfg["res_factor"],
+            sensor_cfg["resolution"][0] // sensor_cfg["res_factor"],
+            sensor_cfg["resolution"][1] // sensor_cfg["res_factor"],
         )
 
         # ------------------------------------------------------------------
