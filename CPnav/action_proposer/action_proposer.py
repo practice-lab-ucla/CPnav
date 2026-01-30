@@ -65,9 +65,6 @@ class ActionProposer:
 
         a_initial = self.raycaster.build_initial_actions(obs, self.theta_values)
         return a_initial
-    
-
-
 
 
     def _refine_explored(self, a_initial_raw, agent_state, voxel):
@@ -154,8 +151,6 @@ class ActionProposer:
         return out
 
 
-
-
     def _refine_actions(self, a_initial):
         """
         Port of `_action_proposer` from agent.py, but with:
@@ -194,9 +189,6 @@ class ActionProposer:
         # If nothing left after filtering, return empty
         if not normalized_pairs:
             return []
-        
-
-
 
         # From here on, behave exactly like original implementation but use normalized_pairs
         min_angle = self.hard_spacing

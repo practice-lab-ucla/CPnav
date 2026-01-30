@@ -5,6 +5,8 @@ from CPnav.action_proposer.action_proposer import ActionProposer
 from CPnav.projection_on_image import project_actions_on_image  
 from CPnav.action_proposer.voxel_map import VoxelMap
 
+from CPnav.agent.gpt_agent import GPTAgent
+
 import yaml
 import numpy as np
 
