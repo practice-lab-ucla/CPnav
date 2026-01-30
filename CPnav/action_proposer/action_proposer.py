@@ -154,26 +154,6 @@ class ActionProposer:
         return out
 
 
-    def _filter_unexplored_to_pairs(actions):
-        """
-        actions: list of either
-        - (mag, theta)
-        - (mag, theta, explored_flag)  # explored_flag: truthy means unexplored? see note
-        Returns: list of (mag, theta) for unexplored rays (or all if no flag present)
-        """
-        if not actions:
-            return []
-
-
-        first = actions[0]
-        if isinstance(first, (list, tuple)) and len(first) >= 3:
-
-            pairs = [(mag, theta) for mag, theta, flag in actions if flag]
-            return pairs
-        else:
-            return [(mag, theta) for mag, theta in actions]
-
-
 
 
     def _refine_actions(self, a_initial):
@@ -216,7 +196,7 @@ class ActionProposer:
             return []
         
 
-        
+
 
         # From here on, behave exactly like original implementation but use normalized_pairs
         min_angle = self.hard_spacing
