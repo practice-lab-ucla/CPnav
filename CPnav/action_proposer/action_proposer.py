@@ -2,6 +2,8 @@
 
 import numpy as np
 from .navigability_raycast import DepthNavigabilityRaycaster
+from ..utils import local_to_global
+import math
 
 
 class ActionProposer:
@@ -29,7 +31,7 @@ class ActionProposer:
         # Refinement knobs
         self.hard_spacing = np.deg2rad(ap_cfg["hard_spacing_deg"])  # radians
         self.clip_frac = ap_cfg["clip_frac"]
-        self.observe_frac = ap_cfg["observe_frac"]
+
 
         # Explore bias
         if ap_cfg.get("enable", False):
@@ -39,7 +41,7 @@ class ActionProposer:
 
         # Angular range / sensor range (use camera FOV)
         sensor_fov_deg = sim_cfg["sensor_cfg"]["fov"]
-        half_range_rad = np.deg2rad(sensor_fov_deg)*2 / 2.0
+        half_range_rad = np.deg2rad(sensor_fov_deg)* 1.5 / 2.0
 
         # Precompute theta samples in the camera FOV
         self.theta_values = np.linspace(-half_range_rad, half_range_rad, self.num_theta)
@@ -47,42 +49,6 @@ class ActionProposer:
         # Depth-based raycaster helper: does RGBD → (r, theta)
         # Assumes DepthNavigabilityRaycaster(cfg) is how we constructed it.
 
-    # ---------- public API ----------
-
-    def propose(self, obs: dict, voxel_map=None):
-        """
-        Full pipeline:
-
-          1) a_initial = _build_initial_actions(obs)
-          2) a_final   = _refine_actions(a_initial)
-          3) (optional) voxel_map update – NOT used yet.
-
-        Args
-        ----
-        obs : dict
-            CPNav observation. Must at least contain 'agent_state',
-            'color_sensor', 'depth_sensor'.
-
-        voxel_map : optional
-            Currently ignored. Hook is left here for future integration.
-
-        Returns
-        -------
-        list[tuple[float, float]]
-            List of (r, theta) in the agent frame.
-        """
-        # 1) initial actions from depth (ray casting)
-        a_initial = self._build_initial_actions(obs)
-
-        # 2) refine according to spacing / explore bias
-        a_final = self._refine_actions(a_initial)
-
-        # 3) voxel_map update would go here in the future if you want it.
-
-        # Drop the "is_unexplored" flag; return just (r, theta)
-        return [(r, theta) for (r, theta, _) in a_final]
-
-    # ---------- internal helpers ----------
 
     def _build_initial_actions(self, obs: dict):
         """
@@ -95,16 +61,120 @@ class ActionProposer:
         """
         # a_initial = [(self.max_action_dist, theta) for theta in self.theta_values]
         
-
-
-        # print("sadasdasdsadasdasdasdasdassda",a_initial)
-        # return a_initial
-    
-
         self.raycaster = DepthNavigabilityRaycaster(self.cfg)
 
         a_initial = self.raycaster.build_initial_actions(obs, self.theta_values)
         return a_initial
+    
+
+
+
+
+    def _refine_explored(self, a_initial_raw, agent_state, voxel):
+        """
+        Classify each (r, theta) in a_initial_raw as explored/unexplored by reading
+        the provided voxel (no writes).
+
+        Returns:
+            list of (r, theta, is_unexplored)
+        Notes:
+            - Uses clip_frac and max_action_dist to pick the check point (same convention
+            as VLM agent: use clipped distance for explored-check).
+            - Uses the same small cross-shaped neighborhood and threshold (score < 3)
+            as the original code to decide unexplored vs explored.
+        """
+        import numpy as np
+
+        if not a_initial_raw:
+            return []
+
+        # Ensure voxel has voxels initialized (init_pos must be set externally by caller)
+        # If voxel.init_pos is None, we cannot reliably map to grid — mark everything explored = False.
+        if getattr(voxel, "init_pos", None) is None:
+            return [(r, theta, False) for (r, theta) in a_initial_raw]
+
+        # Build merged topdown map: voxels with explored color override base voxel map
+        topdown_map = voxel.voxel_map.copy()
+        try:
+            mask = np.all(voxel.explored_map == voxel.explored_color, axis=-1)
+            topdown_map[mask] = voxel.explored_color
+        except Exception:
+            # If shapes or channels mismatch, fall back to using voxel.voxel_map only.
+            topdown_map = voxel.voxel_map.copy()
+
+        h, w, _ = topdown_map.shape
+
+        def _count_explored_neighborhood(gx, gy, radius=2):
+            """Count how many explored-colored pixels appear in cross (vertical + horizontal) neighborhood."""
+            cnt = 0
+            # vertical slice
+            x = int(gx)
+            y0 = max(0, int(gy) - radius)
+            y1 = min(h - 1, int(gy) + radius)
+            if 0 <= x < w and y0 <= y1:
+                col = topdown_map[y0:y1+1, x]
+                cnt += int(np.all(col == voxel.explored_color, axis=-1).sum())
+            # horizontal slice
+            y = int(gy)
+            x0 = max(0, int(gx) - radius)
+            x1 = min(w - 1, int(gx) + radius)
+            if 0 <= y < h and x0 <= x1:
+                row = topdown_map[y, x0:x1+1]
+                cnt += int(np.all(row == voxel.explored_color, axis=-1).sum())
+            return cnt
+
+        out = []
+        for r, theta in a_initial_raw:
+            # Clip the check distance using same convention as you use when you visualize explored (clip_frac)
+            clipped_r = min(r * self.clip_frac, self.max_action_dist)
+
+            # Local point in agent frame (x, y, z)
+            local_pt = np.array([clipped_r * np.sin(theta), 0.0, -clipped_r * np.cos(theta)])
+
+            # Convert to global then to grid coords; handle exceptions defensively
+            try:
+                global_pt = local_to_global(agent_state.position, agent_state.rotation, local_pt)
+                gx, gy = voxel._global_to_grid(global_pt)
+            except Exception:
+                # If mapping fails for any reason, conservatively mark as explored (i.e., not unexplored)
+                out.append((r, theta, False))
+                continue
+
+            # clamp grid coords
+            gx = max(0, min(gx, w - 1))
+            gy = max(0, min(gy, h - 1))
+
+            score = _count_explored_neighborhood(gx, gy, radius=2)
+
+            # same threshold as original implementation: unexplored if neighborhood has < 3 explored pixels
+            is_unexplored = score < 3
+
+            out.append((r, theta, is_unexplored))
+
+        return out
+
+
+    def _filter_unexplored_to_pairs(actions):
+        """
+        actions: list of either
+        - (mag, theta)
+        - (mag, theta, explored_flag)  # explored_flag: truthy means unexplored? see note
+        Returns: list of (mag, theta) for unexplored rays (or all if no flag present)
+        """
+        if not actions:
+            return []
+
+
+        first = actions[0]
+        if isinstance(first, (list, tuple)) and len(first) >= 3:
+
+            pairs = [(mag, theta) for mag, theta, flag in actions if flag]
+            return pairs
+        else:
+            return [(mag, theta) for mag, theta in actions]
+
+
+
 
     def _refine_actions(self, a_initial):
         """
@@ -112,8 +182,16 @@ class ActionProposer:
         - voxel map scoring removed
         - cooldown fallback removed
 
+        This version is tolerant to input containing either:
+            - (mag, theta)
+            - (mag, theta, flag)
+
+        If an element has a third value (flag), we will FILTER OUT any
+        element whose flag is not False (i.e. we keep only entries with flag == False).
+        Change the filtering logic below if you want the opposite behavior.
+
         Input:
-            a_initial: list of (mag, theta)
+            a_initial: list of (mag, theta)  OR list of (mag, theta, flag)
 
         Output:
             list of [mag, theta, is_unexplored]
@@ -121,16 +199,35 @@ class ActionProposer:
         if not a_initial:
             return []
 
+        # --- Normalise / optionally filter incoming items that have a third flag ---
+        normalized_pairs = []
+        for item in a_initial:
+            # allow lists/tuples of len 2 or >=3
+            if isinstance(item, (list, tuple)) and len(item) >= 3:
+                mag, theta, flag = item[0], item[1], item[2]
+                if flag is False:
+                    normalized_pairs.append((mag, theta))
+            else:
+                mag, theta = item[0], item[1]
+                normalized_pairs.append((mag, theta))
+
+        # If nothing left after filtering, return empty
+        if not normalized_pairs:
+            return []
+        
+
+        
+
+        # From here on, behave exactly like original implementation but use normalized_pairs
         min_angle = self.hard_spacing
         explore_bias = self.explore_bias
         clip_frac = self.clip_frac
-        observe_frac = self.observe_frac
 
         explore = explore_bias > 0
 
         # Group by theta and keep the minimum radius per angle
         unique = {}
-        for mag, theta in a_initial:
+        for mag, theta in normalized_pairs:
             unique.setdefault(theta, []).append(mag)
 
         arrowData = []
@@ -161,7 +258,7 @@ class ActionProposer:
                 longest_ndx = f.index(longest)
 
                 out.append(
-                    [longest[0] * observe_frac, longest[1], longest[2]]
+                    [longest[0], longest[1], longest[2]]
                 )
                 thetas.add(longest_theta)
 
@@ -169,7 +266,7 @@ class ActionProposer:
                 for i in range(longest_ndx + 1, len(f)):
                     if all(abs(f[i][1] - t) > (min_angle * 1.0) for t in thetas):
                         out.append(
-                            [f[i][0] * observe_frac, f[i][1], f[i][2]]
+                            [f[i][0], f[i][1], f[i][2]]
                         )
                         thetas.add(f[i][1])
 
@@ -177,7 +274,7 @@ class ActionProposer:
                 for i in range(longest_ndx - 1, -1, -1):
                     if all(abs(f[i][1] - t) > (min_angle * 1.0) for t in thetas):
                         out.append(
-                            [f[i][0] * observe_frac, f[i][1], f[i][2]]
+                            [f[i][0], f[i][1], f[i][2]]
                         )
                         thetas.add(f[i][1])
 
@@ -187,7 +284,7 @@ class ActionProposer:
                         abs(theta_i - t) for t in thetas
                     ) > min_angle * explore_bias:
                         out.append(
-                            [r_i * observe_frac, theta_i, e_i]
+                            [r_i, theta_i, e_i]
                         )
                         thetas.add(theta_i)
         else:
@@ -199,18 +296,18 @@ class ActionProposer:
         # Restore original (unclipped) distances before returning,
         # and filter out rays whose true length < min_action_dist.
         original_distance_dict = {}
-        for mag, theta in a_initial:
+        for mag, theta, _ in a_initial:
             # If a theta appears multiple times, keep the *min* distance
             if theta not in original_distance_dict:
                 original_distance_dict[theta] = mag
             else:
                 original_distance_dict[theta] = min(original_distance_dict[theta], mag)
 
-        min_dist = self.min_action_dist
+        max_dist = self.max_action_dist
+
         out = [
-            [original_distance_dict.get(theta, mag), theta, e]
+            [min(original_distance_dict.get(theta, mag), max_dist), theta, e]
             for mag, theta, e in out
-            if original_distance_dict.get(theta, mag) >= min_dist
         ]
 
         return out

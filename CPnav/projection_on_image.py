@@ -84,6 +84,8 @@ def project_actions_on_image(
     agent_state,
     sensor_state,
     chosen_index: Optional[int] = None,
+    initial_actions: Optional[Iterable[Tuple[float, float]]] = None,  # NEW param
+    show_initial: bool = True,  # whether to label initial actions
 ) -> Dict[Tuple[float, float], int]:
     """
     Projects (r, theta) actions onto the RGB image, similar to VLMNavAgent._project_onto_image.
@@ -148,6 +150,49 @@ def project_actions_on_image(
         return projected
 
     start_px = (int(start_px[0]), int(start_px[1]))
+
+
+
+
+        # ------------------ NEW: draw initial (raw) actions for debugging ---------------
+    if show_initial:
+        if initial_actions is not None:
+            # orange-ish marker in BGR (visible against many scenes)
+            initial_color = (0, 165, 255)
+            small_radius = max(3, math.ceil(4 * scale_factor))
+            font_small = font
+            font_scale_small = 0.7 * scale_factor
+            thickness_small = math.ceil(2 * scale_factor)
+
+            for ia_idx, (r_i, theta_i) in enumerate(initial_actions):
+                px = agent_frame_to_image_coords(
+                    [r_i * np.sin(theta_i), 0.0, -r_i * np.cos(theta_i)],
+                    agent_state,
+                    sensor_state,
+                    resolution=resolution,
+                    focal_length=focal_length,
+                )
+                if px is None:
+                    continue
+                px = (int(px[0]), int(px[1]))
+
+                # small filled circle
+                cv2.circle(rgb_image, px, small_radius, initial_color, -1)
+
+                # optional small label like "i1", "i2" to distinguish
+                
+                label = f"i{ia_idx+1}"
+                text_pos = (px[0] + small_radius + 2, px[1] + small_radius + 2)
+                cv2.putText(rgb_image, label, text_pos, font_small, font_scale_small, BLACK, thickness_small)
+    # ------------------ end NEW block ---------------------------------------------
+
+
+
+
+
+
+
+
 
     for idx, (r_i, theta_i) in enumerate(actions):
         # Check whether this action can be projected (inside image, not border)

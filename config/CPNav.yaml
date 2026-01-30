@@ -19,10 +19,10 @@ agent_cfg:
 
   # VLM-based calibration
   max_action_dist: 1.7
-  min_action_dist: 0.3
+  min_action_dist: 0.75
 
   clip_frac: 1.0
-  observe_frac: 0.5
+
 
   stopping_action_dist: 1.3
   default_action: 0.0
@@ -46,9 +46,10 @@ agent_cfg:
       model: gpt-5-nano
 
   action_proposer_cfg:
-    num_theta: 60
+    clip_frac: 1.0
+    num_theta: 100
     max_action_dist: 1.7
-    min_action_dist: 0.3
+    min_action_dist: 0.75
 
     # Ray casting knobs
     obstacle_height_m: 0.10
@@ -61,8 +62,7 @@ agent_cfg:
 
     # Refinement knobs
     hard_spacing_deg: 20.0
-    clip_frac: 0.8
-    observe_frac: 0.5
+
 
     # Explore bias (optional)
     enable: true

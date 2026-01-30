@@ -97,10 +97,6 @@ class DepthNavigabilityRaycaster:
             if r_i is None:
                 continue
 
-            # Optional hard clip at max_action_dist if you want:
-            max_dist = float(self.cfg.get("max_action_dist", np.inf))
-            r_i = float(np.clip(r_i, 0.0, max_dist))
-
             a_initial.append((r_i, float(theta_out)))
 
         return a_initial
