@@ -14,8 +14,6 @@ from CPnav.action_proposer.action_proposer import ActionProposer
 from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
 from CPnav.sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
 
-action_idx_list = [5, 0, 0, 0, 0]
-
 
 class GPTStepLogger:
     def __init__(self, root_dir: str = "./logs"):
@@ -179,7 +177,7 @@ async def main():
         if done:
             return
 
-        action_idx = action_idx_list[env.step_count]  # min(max(action_idx-1, 0), len(actions))
+        action_idx = min(max(action_idx-1, 0), len(actions))
         action = sorted_actions[action_idx]
 
         print("action_index", action_idx)
