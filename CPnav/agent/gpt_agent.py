@@ -200,7 +200,7 @@ class GPTAgent:
             action_prompt = (
                 f"TASK: NAVIGATE TO THE NEAREST {goal.upper()}, and get as close to it as possible. "
                 f"Use your prior knowledge about where items are typically located within a home. "
-                f"There are {num_actions+1} actions that you can choose from (including action 0). "
+                f"There are {num_actions} actions that you can choose from (including action 0). "
                 f"Actions are shown with red arrows superimposed onto your observation, labeled with numbers in white circles. "
                 f"The image is a fusion of three views from one position at different angles."
                 f"{'NOTE: Choose action 0 (rewind) if you want to rewind to a previous step or do not see anything worth exploring '}"
@@ -211,7 +211,7 @@ class GPTAgent:
                 f"The 'confidence_score' list represents probabilities for each action "
                 f"'action' must be an integer not a string and an independent confidence value in [0, 1]  "
                 f"Do NOT normalize or force the scores to sum to 1. "
-                f"You must generate exactly {num_actions+1} confidence scores, one for each action shown. "
+                f"You must generate exactly {num_actions} confidence scores, one for each action shown. "
                 f"{'If Action 0 (rewind) is available, its confidence score must appear first in the list, followed by Action 1, Action 2, etc.' if True else 'The scores should be listed in order: Action 1, Action 2, Action 3, and so on.'}"
 
             )

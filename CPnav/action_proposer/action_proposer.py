@@ -80,15 +80,13 @@ class ActionProposer:
             - Uses the same small cross-shaped neighborhood and threshold (score < 3)
             as the original code to decide unexplored vs explored.
         """
-        import numpy as np
-
         if not a_initial_raw:
             return []
 
         # Ensure voxel has voxels initialized (init_pos must be set externally by caller)
         # If voxel.init_pos is None, we cannot reliably map to grid — mark everything explored = False.
         if getattr(voxel, "init_pos", None) is None:
-            return [(r, theta, False) for (r, theta) in a_initial_raw]
+            return [(r, theta, True) for (r, theta) in a_initial_raw]
 
         # Build merged topdown map: voxels with explored color override base voxel map
         topdown_map = voxel.voxel_map.copy()
@@ -162,7 +160,7 @@ class ActionProposer:
             - (mag, theta, flag)
 
         If an element has a third value (flag), we will FILTER OUT any
-        element whose flag is not False (i.e. we keep only entries with flag == False).
+        element whose flag is not True (explored) (i.e. we keep only entries with flag == True).
         Change the filtering logic below if you want the opposite behavior.
 
         Input:
@@ -180,7 +178,7 @@ class ActionProposer:
             # allow lists/tuples of len 2 or >=3
             if isinstance(item, (list, tuple)) and len(item) >= 3:
                 mag, theta, flag = item[0], item[1], item[2]
-                if flag is False:
+                if flag is True:
                     normalized_pairs.append((mag, theta))
             else:
                 mag, theta = item[0], item[1]

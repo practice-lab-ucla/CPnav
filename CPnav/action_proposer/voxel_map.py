@@ -69,7 +69,8 @@ class VoxelMap:
 
         for r, theta in a_initial_raw:
             self._update_voxel_single(r, float(theta), agent_state,
-                                      clip_dist=max_action_dist, clip_frac=clip_frac)
+                clip_dist=max_action_dist, clip_frac=clip_frac
+            )
 
     def generate_voxel_image(self, projected_mapping, agent_state, chosen_action=None):
         """

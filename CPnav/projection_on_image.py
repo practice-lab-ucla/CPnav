@@ -151,10 +151,7 @@ def project_actions_on_image(
 
     start_px = (int(start_px[0]), int(start_px[1]))
 
-
-
-
-        # ------------------ NEW: draw initial (raw) actions for debugging ---------------
+    # ------------------ NEW: draw initial (raw) actions for debugging ---------------
     if show_initial:
         if initial_actions is not None:
             # orange-ish marker in BGR (visible against many scenes)
@@ -180,19 +177,11 @@ def project_actions_on_image(
                 cv2.circle(rgb_image, px, small_radius, initial_color, -1)
 
                 # optional small label like "i1", "i2" to distinguish
-                
+
                 label = f"i{ia_idx+1}"
                 text_pos = (px[0] + small_radius + 2, px[1] + small_radius + 2)
                 cv2.putText(rgb_image, label, text_pos, font_small, font_scale_small, BLACK, thickness_small)
     # ------------------ end NEW block ---------------------------------------------
-
-
-
-
-
-
-
-
 
     for idx, (r_i, theta_i) in enumerate(actions):
         # Check whether this action can be projected (inside image, not border)

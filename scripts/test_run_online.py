@@ -1,25 +1,20 @@
+import os
 import cv2
-from CPnav.env import ObjectNavEnv
-# import matplotlib.pyplot as plt
-from CPnav.action_proposer.action_proposer import ActionProposer
-from CPnav.projection_on_image import project_actions_on_image  
-from CPnav.action_proposer.voxel_map import VoxelMap
+import yaml
+import json
+import asyncio
+from datetime import datetime
+from dotenv import load_dotenv
+from typing import List, Tuple, Optional
 
+from CPnav.env import ObjectNavEnv
+from CPnav.action_proposer.voxel_map import VoxelMap
+from CPnav.projection_on_image import project_actions_on_image
+from CPnav.action_proposer.action_proposer import ActionProposer
 from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
 from CPnav.sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
 
-
-import yaml
-
-import os
-import asyncio
-from dotenv import load_dotenv
-
-import os
-import json
-import cv2
-from datetime import datetime
-from typing import List, Tuple, Optional
+action_idx_list = [5, 0, 0, 0, 0]
 
 
 class GPTStepLogger:
@@ -41,6 +36,7 @@ class GPTStepLogger:
     def log_step(
         self,
         overlay_rgb,
+        voxel_rgb,
         stop_text: str,
         act_text: str,
         actions: List[Tuple[float, float]],
@@ -53,8 +49,10 @@ class GPTStepLogger:
 
         # ---------- image ----------
         img_path = os.path.join(self.img_dir, f"{step_id}_overlay.png")
+        voxel_path = os.path.join(self.img_dir, f"{step_id}_voxel.png")
         # OpenCV expects BGR
         cv2.imwrite(img_path, overlay_rgb[:, :, ::-1])
+        cv2.imwrite(voxel_path, voxel_rgb[:, :, ::-1])
 
         # ---------- texts ----------
         with open(os.path.join(self.txt_dir, f"{step_id}_stop.txt"), "w") as f:
@@ -108,19 +106,21 @@ async def main():
 
     while True:
         print("step", env.step_count)
+        print("agent position", obs["agent_state"].position)
+        print("agent rotation", obs["agent_state"].rotation)
+        agent_state = obs["agent_state"]
         a_initial_raw = ap._build_initial_actions(obs)          
-        a_after_explored = ap._refine_explored(a_initial_raw, obs["agent_state"], voxel)
+        a_after_explored = ap._refine_explored(a_initial_raw, agent_state, voxel)
 
         a_final_full  = ap._refine_actions(a_after_explored)       
         actions = [(r, theta) for (r, theta, _) in a_final_full]
 
-        agent_state = obs["agent_state"]
         sensor_state = agent_state.sensor_states["color_sensor"]
 
         rgb = obs["color_sensor"][:, :, :3]          # shape (H, W, 4), uint8
         overlay_rgb = rgb.copy()         # drop alpha channel and copy
 
-        projected_mapping = project_actions_on_image(
+        actions_on_image = project_actions_on_image(
             cfg,
             overlay_rgb,
             actions,                # refined actions (same as before)
@@ -128,25 +128,31 @@ async def main():
             sensor_state,
             chosen_index=None,
             initial_actions=a_initial_raw,  
-            show_initial=True
+            show_initial=False
         )
+
+        sorted_actions = [
+            PolarAction(r, theta)
+            for (r, theta), _
+            in sorted(actions_on_image.items(), key=lambda kv: kv[1])
+        ]
 
         # === update voxel map and visualize it ===
         # Use a_initial_raw for voxel map update (bounded by max_action_dist)
+
+        # Use the *projected* actions to draw arrows/numbers on top-down map
+        voxel_image = voxel.generate_voxel_image(
+            actions_on_image,
+            agent_state,
+            chosen_action=None,   # or e.g. 1 if you want to highlight action "1"
+        )
+
         voxel.update_from_actions(
             a_initial_raw,
             agent_state,
             max_action_dist=ap.max_action_dist,
             clip_frac=ap.clip_frac,
         )
-
-        # Use the *projected* actions to draw arrows/numbers on top-down map
-        voxel_image = voxel.generate_voxel_image(
-            projected_mapping,
-            agent_state,
-            chosen_action=None,   # or e.g. 1 if you want to highlight action "1"
-        )
-
 
         stop_res, action_res = await query_stop_and_action(gpt_agent, overlay_rgb, goal="toilet", num_actions=len(actions))
 
@@ -160,6 +166,7 @@ async def main():
 
         logger.log_step(
             overlay_rgb=overlay_rgb,
+            voxel_rgb=voxel_image,
             stop_text=stop_text,
             act_text=act_text,
             actions=actions,
@@ -172,8 +179,11 @@ async def main():
         if done:
             return
 
-        action_idx = min(max(action_idx - 1, 0), len(actions))
-        action = PolarAction(*actions[action_idx], "")
+        action_idx = action_idx_list[env.step_count]  # min(max(action_idx-1, 0), len(actions))
+        action = sorted_actions[action_idx]
+
+        print("action_index", action_idx)
+        print(f"executed action r={action.r}, theta={action.theta}")
 
         obs = env.step(action)
 
