@@ -112,7 +112,7 @@ class ObjectNavEnv:
         self.curr_run_name = f"{episode_ndx}_{self.simWrapper.scene_id}"
         self.step_count = 0
 
-    def step(self, agent_actions):
+    def step(self, agent_actions: PolarAction):
         self.step_count += 1
         return self.simWrapper.step(agent_actions)
     

@@ -85,7 +85,8 @@ def project_actions_on_image(
     sensor_state,
     chosen_index: Optional[int] = None,
     initial_actions: Optional[Iterable[Tuple[float, float]]] = None,  # NEW param
-    show_initial: bool = True,  # whether to label initial actions
+    show_initial: bool = True,  # whether to label initial actions,
+    draw_turn_around: bool = True
 ) -> Dict[Tuple[float, float], int]:
     """
     Projects (r, theta) actions onto the RGB image, similar to VLMNavAgent._project_onto_image.
@@ -253,7 +254,7 @@ def project_actions_on_image(
             text_thickness,
         )
 
-    if not projected:
+    if (not projected) and (not draw_turn_around):
         put_text_on_image(
             rgb_image,
             "NO VALID ACTIONS TO PROJECT",
@@ -262,6 +263,32 @@ def project_actions_on_image(
             location="center",
             text_thickness=math.ceil(3 * scale_factor),
             highlight=False,
+        )
+    elif draw_turn_around:
+        # Turn-around bubble
+        H, W, _ = rgb_image.shape
+        text = "0"
+        text_size = 3.1 * scale_factor
+        text_thickness = math.ceil(3 * scale_factor)
+        (tw, th), _ = cv2.getTextSize(text, font, text_size, text_thickness)
+
+        circle_center = (math.ceil(0.05 * W), math.ceil(H / 2))
+        circle_radius = max(tw, th) // 2 + math.ceil(15 * scale_factor)
+
+        fill = WHITE
+        cv2.circle(rgb_image, circle_center, circle_radius, fill, -1)
+        cv2.circle(rgb_image, circle_center, circle_radius, RED, math.ceil(2 * scale_factor))
+
+        text_pos = (circle_center[0] - tw // 2, circle_center[1] + th // 2)
+        cv2.putText(rgb_image, text, text_pos, font, text_size, BLACK, text_thickness)
+        cv2.putText(
+            rgb_image,
+            "TURN AROUND",
+            (text_pos[0] // 2, text_pos[1] + math.ceil(80 * scale_factor)),
+            font,
+            text_size * 0.75,
+            RED,
+            text_thickness,
         )
 
     return projected

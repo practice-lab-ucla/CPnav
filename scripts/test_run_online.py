@@ -1,11 +1,8 @@
 import os
-import cv2
 import yaml
-import json
 import asyncio
-from datetime import datetime
+import numpy as np
 from dotenv import load_dotenv
-from typing import List, Tuple, Optional
 
 from CPnav.env import ObjectNavEnv
 from CPnav.action_proposer.voxel_map import VoxelMap
@@ -13,69 +10,7 @@ from CPnav.projection_on_image import project_actions_on_image
 from CPnav.action_proposer.action_proposer import ActionProposer
 from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
 from CPnav.sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
-
-
-class GPTStepLogger:
-    def __init__(self, root_dir: str = "./logs"):
-        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_dir = os.path.join(root_dir, f"run_{ts}")
-        os.makedirs(self.run_dir, exist_ok=True)
-
-        self.step = 0
-
-        # subfolders
-        self.img_dir = os.path.join(self.run_dir, "images")
-        self.txt_dir = os.path.join(self.run_dir, "texts")
-        self.json_dir = os.path.join(self.run_dir, "meta")
-
-        for d in [self.img_dir, self.txt_dir, self.json_dir]:
-            os.makedirs(d, exist_ok=True)
-
-    def log_step(
-        self,
-        overlay_rgb,
-        voxel_rgb,
-        stop_text: str,
-        act_text: str,
-        actions: List[Tuple[float, float]],
-        action_idx: Optional[int],
-        confidence_scores: Optional[list],
-        done: int,
-        global_semantic_score: Optional[float],
-    ):
-        step_id = f"{self.step:04d}"
-
-        # ---------- image ----------
-        img_path = os.path.join(self.img_dir, f"{step_id}_overlay.png")
-        voxel_path = os.path.join(self.img_dir, f"{step_id}_voxel.png")
-        # OpenCV expects BGR
-        cv2.imwrite(img_path, overlay_rgb[:, :, ::-1])
-        cv2.imwrite(voxel_path, voxel_rgb[:, :, ::-1])
-
-        # ---------- texts ----------
-        with open(os.path.join(self.txt_dir, f"{step_id}_stop.txt"), "w") as f:
-            f.write(stop_text)
-
-        with open(os.path.join(self.txt_dir, f"{step_id}_action.txt"), "w") as f:
-            f.write(act_text)
-
-        # ---------- structured metadata ----------
-        meta = {
-            "step": self.step,
-            "done": int(done),
-            "global_semantic_score": global_semantic_score,
-            "chosen_action_index": action_idx,
-            "actions": [
-                {"index": i, "r": float(r), "theta": float(theta)}
-                for i, (r, theta) in enumerate(actions)
-            ],
-            "confidence_scores": confidence_scores,
-        }
-
-        with open(os.path.join(self.json_dir, f"{step_id}.json"), "w") as f:
-            json.dump(meta, f, indent=2)
-
-        self.step += 1
+from CPnav.logger import GPTStepLogger
 
 
 async def main():
@@ -102,7 +37,7 @@ async def main():
 
     logger = GPTStepLogger("./logs")
 
-    while True:
+    for _ in range(50):
         print("step", env.step_count)
         print("agent position", obs["agent_state"].position)
         print("agent rotation", obs["agent_state"].rotation)
@@ -159,7 +94,7 @@ async def main():
 
         done = stop_data.get("done", 0)
         gsv  = stop_data.get("global_semantic_score", None)
-        action_idx = act_data.get("action", None)
+        action_selected = act_data.get("action", None)
         scores = act_data.get("confidence_score", None)
 
         logger.log_step(
@@ -168,7 +103,7 @@ async def main():
             stop_text=stop_text,
             act_text=act_text,
             actions=actions,
-            action_idx=action_idx,
+            action_idx=action_selected,
             confidence_scores=scores,
             done=done,
             global_semantic_score=gsv,
@@ -176,14 +111,19 @@ async def main():
 
         if done:
             return
+        
+        if action_selected == 0:
+            action = PolarAction(0, np.pi/2, "turn around")
+            obs = env.step(action)
+        
+        else:
+            action_idx = min(max(action_selected-1, 0), len(actions))
+            action = sorted_actions[action_idx]
 
-        action_idx = min(max(action_idx-1, 0), len(actions))
-        action = sorted_actions[action_idx]
-
-        print("action_index", action_idx)
+            obs = env.step(action)
+        
+        print("GPT choose action number", action_selected)
         print(f"executed action r={action.r}, theta={action.theta}")
-
-        obs = env.step(action)
 
 
 if __name__ == "__main__":
