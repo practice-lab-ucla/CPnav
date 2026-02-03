@@ -1,7 +1,12 @@
 import os
+import cv2
 import json
 from datetime import datetime
 from typing import List, Tuple, Optional
+
+
+def quaternion_to_wxyz(rotation):
+    return [rotation.w, rotation.x, rotation.y, rotation.z]
 
 
 class GPTStepLogger:
@@ -24,6 +29,8 @@ class GPTStepLogger:
         self,
         overlay_rgb,
         voxel_rgb,
+        position,
+        rotation,
         stop_text: str,
         act_text: str,
         actions: List[Tuple[float, float]],
@@ -51,6 +58,8 @@ class GPTStepLogger:
         # ---------- structured metadata ----------
         meta = {
             "step": self.step,
+            "position":[float(p) for p in position],
+            "rotation": quaternion_to_wxyz(rotation),
             "done": int(done),
             "global_semantic_score": global_semantic_score,
             "chosen_action_index": action_idx,

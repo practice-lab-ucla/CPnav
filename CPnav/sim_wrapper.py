@@ -33,6 +33,20 @@ STOP_ACTION = PolarAction(0.0, 0.0, "stop")
 NULL_ACTION = PolarAction(0.0, 0.0, "null")
 
 
+class TeleopAction:
+    """
+    Simple polar action representation:
+      - r: forward distance (meters)
+      - theta: yaw change (radians), positive is counterclockwise
+      - type: optional string label (e.g., 'default', 'stop', 'null')
+    """
+
+    def __init__(self, x: float, z: float, yaw: float):
+        self.x = x
+        self.z = z
+        self.yaw = yaw
+
+
 class SimWrapper:
     """
     A thin wrapper around Habitat-Sim that:
@@ -344,3 +358,39 @@ class SimWrapper:
         except Exception:
             # Closing twice or after partial init should not crash the program.
             pass
+    
+    def teleport_to_xz(self, action: TeleopAction) -> dict:
+        """
+        Directly teleport the main agent (agent 0) to world-frame (x, z),
+        keeping current y. Optionally set yaw (rotation about +Y).
+
+        Args:
+            action: TeleopAction(x, z, yaw). If yaw is None, keep current rotation.
+
+        Returns:
+            dict: Sensor observations for agent 0, plus 'agent_state'.
+        """
+        agent = self.sim.get_agent(0)
+        curr_state = agent.get_state()
+
+        # Keep current y (Habitat uses y-up)
+        y = float(curr_state.position[1])
+
+        new_state = habitat_sim.AgentState()
+        new_state.position = np.array([float(action.x), y, float(action.z)], dtype=np.float32)
+
+        # Preserve rotation unless yaw is provided
+        if action.yaw is None:
+            new_state.rotation = curr_state.rotation
+        else:
+            new_state.rotation = quat_from_angle_axis(
+                float(action.yaw),
+                np.array([0.0, 1.0, 0.0], dtype=np.float32),
+            )
+
+        agent.set_state(new_state)
+
+        observation = self.sim.get_sensor_observations(0)
+        observation["agent_state"] = agent.get_state()
+        return observation
+

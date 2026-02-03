@@ -1,17 +1,15 @@
 import gzip
 import json
 import logging
-import math
 import os
-import random
 
-import habitat_sim
 import numpy as np
 
 from scipy.spatial.transform import Rotation as R
 from pathlib import Path
+from typing import Union
 
-from .sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
+from .sim_wrapper import SimWrapper, PolarAction, TeleopAction, NULL_ACTION
 from .utils import *
 
 
@@ -112,9 +110,12 @@ class ObjectNavEnv:
         self.curr_run_name = f"{episode_ndx}_{self.simWrapper.scene_id}"
         self.step_count = 0
 
-    def step(self, agent_actions: PolarAction):
+    def step(self, agent_action: Union[PolarAction, TeleopAction]):
         self.step_count += 1
-        return self.simWrapper.step(agent_actions)
+        if isinstance(agent_action, PolarAction):
+            return self.simWrapper.step(agent_action)
+        elif isinstance(agent_action, TeleopAction):
+            return self.simWrapper.teleport_to_xz(agent_action)
     
     def reset(self):
         self.step_count = 0

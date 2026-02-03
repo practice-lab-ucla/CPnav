@@ -9,6 +9,9 @@ import quaternion
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
+from habitat_sim.utils.common import quat_to_angle_axis
+
+
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BLACK = (0, 0, 0)
@@ -48,6 +51,26 @@ def global_to_local(position, orientation, global_point):
     inverse_orientation = np.quaternion.conj(orientation)
     local_point = quaternion.rotate_vectors(inverse_orientation, translated_point)
     return local_point
+
+
+def quat_to_yaw_habitat(curr_rotation) -> float:
+    """
+    Extract yaw (rotation about +Y) from a Habitat quaternion.
+    Assumes agent is mostly upright (yaw-only for navigation).
+    """
+    theta, axis = quat_to_angle_axis(curr_rotation)
+
+    # Same trick you used in SimWrapper._rotate_yaw:
+    # enforce axis.y >= 0 for consistent sign.
+    if axis[1] < 0:
+        theta = 2.0 * np.pi - theta
+
+    # Wrap to [-pi, pi]
+    while theta > math.pi:
+        theta -= 2.0 * math.pi
+    while theta < -math.pi:
+        theta += 2.0 * math.pi
+    return float(theta)
 
 
 def calculate_focal_length(fov_degrees, image_width):
