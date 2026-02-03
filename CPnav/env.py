@@ -34,6 +34,7 @@ def get_quat_from_heading_angle(heading_angle_deg: float) -> np.ndarray:
 class ObjectNavEnv:
     def __init__(self, cfg: dict):
         self.cfg = cfg
+        self.agent_cfg = self.cfg["agent_cfg"]
         self.sim_cfg = self.cfg["sim_cfg"]
         self.env_cfg = self.cfg["env_cfg"]
 
@@ -113,6 +114,8 @@ class ObjectNavEnv:
     def step(self, agent_action: Union[PolarAction, TeleopAction]):
         self.step_count += 1
         if isinstance(agent_action, PolarAction):
+            agent_action.r = agent_action.r * self.agent_cfg["discourage_ratio"]
+            # agent_action.theta = agent_action.theta * (-1)  # TODO
             return self.simWrapper.step(agent_action)
         elif isinstance(agent_action, TeleopAction):
             return self.simWrapper.teleport_to_xz(agent_action)

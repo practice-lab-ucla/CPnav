@@ -288,7 +288,7 @@ class SimWrapper:
         if axis[1] < 0:
             theta = 2.0 * np.pi - theta
 
-        new_theta = theta + magnitude
+        new_theta = theta - magnitude
         agent_state.rotation = quat_from_angle_axis(
             new_theta, np.array([0.0, 1.0, 0.0], dtype=np.float32)
         )

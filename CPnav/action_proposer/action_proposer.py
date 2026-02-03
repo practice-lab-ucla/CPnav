@@ -275,10 +275,13 @@ class ActionProposer:
 
         max_dist = self.max_action_dist
 
+
         out = [
             [min(original_distance_dict.get(theta, mag), max_dist), theta, e]
             for mag, theta, e in out
         ]
 
+
+        
         return out
 
