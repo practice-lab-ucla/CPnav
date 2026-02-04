@@ -190,7 +190,7 @@ async def main():
             print("step", prev_node, "rewind -> step", target_step, "action", target_action_id)
 
         else:
-            action_selected = 1 #int(max(1, min(action_selected, N)))
+            action_selected = int(max(1, min(action_selected, N)))
             print("step", cur_node, "execute action", action_selected)
 
             tree.mark_tried(cur_node, action_selected)
