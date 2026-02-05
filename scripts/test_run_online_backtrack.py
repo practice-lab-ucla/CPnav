@@ -18,7 +18,7 @@ from CPnav.sim_wrapper import PolarAction
 from CPnav.logger import GPTStepLogger
 from CPnav.tree import ExplorationTree, Pose2D
 from CPnav.utils import quat_to_yaw_habitat
-from CPnav.offline_bfs import world_to_grid_00
+from CPnav.offline_bfs import OfflineGridTree
 
 
 def record_node(tree, step_id: int, obs, sorted_actions, gsv, scores):
@@ -43,6 +43,7 @@ async def main():
 
     env = ObjectNavEnv(cfg)
     tree = ExplorationTree()
+    offline_tree = OfflineGridTree()
 
     env._initialize_experiment()
     env._initialize_episode(0)
@@ -161,11 +162,9 @@ async def main():
 
         elif action_selected == 0:
             # rewind
-            # local = tree.local_backtrack(cur_node)
-            # if local is not None:
-            #     target_step, target_action_id = local
-            if False:
-                pass
+            local = tree.local_backtrack(cur_node)
+            if local is not None:
+                target_step, target_action_id = local
             else:
                 result = tree.global_backtrack(next_node_id-1)
                 if result is None:
@@ -189,7 +188,15 @@ async def main():
             next_node_id += 1
 
             tree.link_parent(cur_node, new_node)  # link immediately
-            obs = env.step(tree.get_node_action(cur_node, target_action_id))
+
+            xz_prev = (obs["position"][0], obs["position"][2])
+            action_score = tree.get_action_score(cur_node, target_action_id)
+            action = tree.get_node_action(cur_node, target_action_id)
+            
+            obs = env.step()
+            
+            xz_new = (obs["position"][0], obs["position"][2])
+            offline_tree.add_edge(xz_prev, xz_new, action_score)
             cur_node = new_node
 
             print("step", prev_node, "rewind -> step", target_step, "action", target_action_id)
@@ -201,28 +208,19 @@ async def main():
 
             tree.mark_tried(cur_node, action_selected)
 
+            action_score = tree.get_action_score(cur_node, action_selected)
             action = sorted_actions[action_selected - 1]
 
             new_node = next_node_id
             next_node_id += 1
 
+            xz_prev = (obs["position"][0], obs["position"][2])
             tree.link_parent(cur_node, new_node)  # link immediately
             obs = env.step(action)
+            xz_new = (obs["position"][0], obs["position"][2])
+            offline_tree.add_edge(xz_prev, xz_new, action_score)
             cur_node = new_node
 
-
-
-
-        try:
-            position=obs["agent_state"].position
-            x_world = position[0]
-            y_world = position[2]
-            gs = float(cfg['agent_cfg']['grid_spacing_m'])  
-            grid_row, grid_col = world_to_grid_00((x_world, y_world), gs)
-
-            print(f"📍 Grid location (0-based) -> col,row: ({grid_col}, {grid_row})  |  world (x,z): ({x_world:.3f}, {y_world:.3f})")
-        except Exception as e:
-            print(f"⚠️ Could not compute grid location after rewind: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())

@@ -210,7 +210,7 @@ class ExplorationTree:
 
     # --------- per-node exploration state ---------
 
-    def mark_tried(self, step_id: StepId, action_id: ActionId) -> None:
+    def mark_tried(self, step_id: StepId, action_id: ActionId):
         """
         Mark an action as tried (remove from unexplored set).
 
@@ -219,9 +219,52 @@ class ExplorationTree:
           action_id: discrete action index tried
 
         Output:
-          None (mutates node state)
+          None
         """
         self._node(step_id).unexplored.discard(action_id)
+
+    def get_action_score(
+        self,
+        step_id: StepId,
+        action_id: ActionId,
+        default: float = 0.0,
+    ) -> float:
+        """
+        Get the score for (step_id, action_id).
+
+        Priority:
+          1) adjusted score (if prefer_adjusted=True and available)
+          2) raw score
+          3) default
+
+        Inputs:
+          step_id: node id
+          action_id: discrete action index (1..N)
+          prefer_adjusted: if True, use adjusted when available
+          default: fallback value if neither score exists
+
+        Output:
+          score (float)
+        """
+        node = self._node(step_id)
+
+        # action_id is 1..N; list index is 0..N-1
+        idx = int(action_id) - 1
+        if idx < 0 or idx >= len(node.actions):
+            raise IndexError(
+                f"get_action_score: step={step_id} action_id={action_id} "
+                f"(idx={idx}) out of range, len(actions)={len(node.actions)}"
+            )
+
+        a = node.actions[idx]
+
+        if a.adjusted is not None:
+            return float(a.adjusted)
+
+        if a.score is not None:
+            return float(a.score)
+
+        return float(default)
 
     def get_unexplored_actions(self, step_id: StepId) -> List[ActionId]:
         """
