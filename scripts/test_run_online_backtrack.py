@@ -18,6 +18,7 @@ from CPnav.sim_wrapper import PolarAction
 from CPnav.logger import GPTStepLogger
 from CPnav.tree import ExplorationTree, Pose2D
 from CPnav.utils import quat_to_yaw_habitat
+from CPnav.offline_bfs import world_to_grid_00
 
 
 def record_node(tree, step_id: int, obs, sorted_actions, gsv, scores):
@@ -110,7 +111,7 @@ async def main():
 
         done = int(stop_data.get("done", 0))
         gsv = stop_data.get("global_semantic_score", None)
-        action_selected = act_data.get("action", None)  # 0..N (or None)
+        action_selected = 1 if cur_node < 1 else 0 #  # act_data.get("action", None)  # 0..N (or None)
         scores = act_data.get("confidence_score", None)
 
         logger.log_step(
@@ -132,6 +133,8 @@ async def main():
 
         # 1) Record/update the node you are CURRENTLY at
         record_node(tree, cur_node, obs, sorted_actions, gsv, scores)
+
+        tree.debug_print_node(0)
 
         # --------------------------
         # Decide + execute movement
@@ -158,9 +161,11 @@ async def main():
 
         elif action_selected == 0:
             # rewind
-            local = tree.local_backtrack(cur_node)
-            if local is not None:
-                target_step, target_action_id = local
+            # local = tree.local_backtrack(cur_node)
+            # if local is not None:
+            #     target_step, target_action_id = local
+            if False:
+                pass
             else:
                 result = tree.global_backtrack(next_node_id-1)
                 if result is None:
@@ -189,6 +194,7 @@ async def main():
 
             print("step", prev_node, "rewind -> step", target_step, "action", target_action_id)
 
+
         else:
             action_selected = int(max(1, min(action_selected, N)))
             print("step", cur_node, "execute action", action_selected)
@@ -204,6 +210,19 @@ async def main():
             obs = env.step(action)
             cur_node = new_node
 
+
+
+
+        try:
+            position=obs["agent_state"].position
+            x_world = position[0]
+            y_world = position[2]
+            gs = float(cfg['agent_cfg']['grid_spacing_m'])  
+            grid_row, grid_col = world_to_grid_00((x_world, y_world), gs)
+
+            print(f"📍 Grid location (0-based) -> col,row: ({grid_col}, {grid_row})  |  world (x,z): ({x_world:.3f}, {y_world:.3f})")
+        except Exception as e:
+            print(f"⚠️ Could not compute grid location after rewind: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
