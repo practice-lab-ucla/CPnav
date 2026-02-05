@@ -43,7 +43,7 @@ async def main():
 
     env = ObjectNavEnv(cfg)
     tree = ExplorationTree()
-    offline_tree = OfflineGridTree()
+    offline_tree = OfflineGridTree(float(cfg["agent_cfg"]["grid_spacing_m"]))
 
     env._initialize_experiment()
     env._initialize_episode(0)
@@ -112,7 +112,7 @@ async def main():
 
         done = int(stop_data.get("done", 0))
         gsv = stop_data.get("global_semantic_score", None)
-        action_selected = 1 if cur_node < 1 else 0 #  # act_data.get("action", None)  # 0..N (or None)
+        action_selected = act_data.get("action", None)  # 0..N (or None)
         scores = act_data.get("confidence_score", None)
 
         logger.log_step(
@@ -175,10 +175,7 @@ async def main():
             # (A) teleop to existing target node (does NOT create a new node)
             obs = env.step(tree.get_node_position(target_step))
             prev_node = cur_node
-            cur_node = target_step  # now we're "at" that node
-
-            # optional but often useful: update the node we teleported to
-            # record_node(tree, cur_node, obs, sorted_actions, gsv, scores)
+            cur_node = target_step
 
             # (B) mark tried on the node we act FROM
             tree.mark_tried(cur_node, target_action_id)
@@ -187,15 +184,15 @@ async def main():
             new_node = next_node_id
             next_node_id += 1
 
-            tree.link_parent(cur_node, new_node)  # link immediately
+            tree.link_parent(cur_node, new_node)
 
-            xz_prev = (obs["position"][0], obs["position"][2])
+            xz_prev = (obs["agent_state"].position[0], obs["agent_state"].position[2])
             action_score = tree.get_action_score(cur_node, target_action_id)
             action = tree.get_node_action(cur_node, target_action_id)
             
-            obs = env.step()
+            obs = env.step(action)
             
-            xz_new = (obs["position"][0], obs["position"][2])
+            xz_new = (obs["agent_state"].position[0], obs["agent_state"].position[2])
             offline_tree.add_edge(xz_prev, xz_new, action_score)
             cur_node = new_node
 
@@ -214,10 +211,10 @@ async def main():
             new_node = next_node_id
             next_node_id += 1
 
-            xz_prev = (obs["position"][0], obs["position"][2])
-            tree.link_parent(cur_node, new_node)  # link immediately
+            xz_prev = (obs["agent_state"].position[0], obs["agent_state"].position[2])
+            tree.link_parent(cur_node, new_node)
             obs = env.step(action)
-            xz_new = (obs["position"][0], obs["position"][2])
+            xz_new = (obs["agent_state"].position[0], obs["agent_state"].position[2])
             offline_tree.add_edge(xz_prev, xz_new, action_score)
             cur_node = new_node
 

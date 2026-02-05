@@ -5,13 +5,13 @@ import numpy as np
 from dotenv import load_dotenv
 
 from CPnav.env import ObjectNavEnv
+from CPnav.logger import GPTStepLogger
+from CPnav.tree import ExplorationTree
 from CPnav.action_proposer.voxel_map import VoxelMap
 from CPnav.projection_on_image import project_actions_on_image
 from CPnav.action_proposer.action_proposer import ActionProposer
 from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
 from CPnav.sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
-from CPnav.logger import GPTStepLogger
-from CPnav.tree import ExplorationTree
 
 
 async def main():
@@ -79,7 +79,7 @@ async def main():
         voxel_image = voxel.generate_voxel_image(
             actions_on_image,
             agent_state,
-            chosen_action=None,   # or e.g. 1 if you want to highlight action "1"
+            chosen_action=None,
         )
 
         voxel.update_from_actions(
