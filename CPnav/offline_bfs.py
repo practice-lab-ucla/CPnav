@@ -84,6 +84,11 @@ class OfflineGridTree:
     def __init__(self, gs: float):
         self.G = nx.DiGraph()
         self.gs = gs
+        self.explored_grid = set()
+    
+    def grid_explored(self, xz: Tuple[float, float]):
+        xz_grid = world_to_grid_00(xz, self.gs)
+        return xz_grid in self.explored_grid
 
     def add_edge(
             self,
@@ -93,6 +98,9 @@ class OfflineGridTree:
         ):
         from_xz_grid = world_to_grid_00(from_xz, self.gs)
         to_xz_grid = world_to_grid_00(to_xz, self.gs)
+
+        self.explored_grid.add(from_xz_grid)
+        self.explored_grid.add(to_xz_grid)
 
         if from_xz_grid == to_xz_grid:
             return

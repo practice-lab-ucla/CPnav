@@ -92,9 +92,10 @@ class ObjectNavEnv:
 
         goals = self.goals[scene_parts[1][6:]]
         all_objects = goals[f"{scene_parts[-1]}_{episode['object_category']}"]
+        episode_goal_category = episode["object_category"]
 
         logging.info(
-            f"RUNNING EPISODE {episode_ndx} with target "
+            f"RUNNING EPISODE {episode_ndx} with target {episode_goal_category}"
             f"{episode['object_category']} ({len(all_objects)} instances). "
         )
 
@@ -110,6 +111,8 @@ class ObjectNavEnv:
         self.simWrapper.set_state(pos=self.init_pos, quat=self.init_rot)
         self.curr_run_name = f"{episode_ndx}_{self.simWrapper.scene_id}"
         self.step_count = 0
+
+        return episode_goal_category
 
     def step(self, agent_action: Union[PolarAction, TeleopAction]):
         self.step_count += 1

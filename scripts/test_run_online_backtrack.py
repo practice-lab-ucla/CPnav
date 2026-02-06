@@ -46,7 +46,7 @@ async def main():
     offline_tree = OfflineGridTree(float(cfg["agent_cfg"]["grid_spacing_m"]))
 
     env._initialize_experiment()
-    env._initialize_episode(0)
+    goal = env._initialize_episode(0)
 
     obs = env.reset()
 
@@ -104,7 +104,7 @@ async def main():
 
         # --- query GPT ---
         stop_res, action_res = await query_stop_and_action(
-            gpt_agent, overlay_rgb, goal="toilet", num_actions=len(sorted_actions)
+            gpt_agent, overlay_rgb, goal=goal, num_actions=len(sorted_actions)
         )
 
         stop_text, stop_data, _, _ = stop_res
