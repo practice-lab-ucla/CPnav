@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Union
 
 from .sim_wrapper import SimWrapper, PolarAction, TeleopAction, NULL_ACTION
-from .utils import *
+from ..utils import *
 
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def get_quat_from_heading_angle(heading_angle_deg: float) -> np.ndarray:
@@ -45,6 +45,8 @@ class ObjectNavEnv:
         # Make dataset path repo-root-relative (optional, you already do it later)
         self.env_cfg["dataset_root_path"] = str((REPO_ROOT / self.env_cfg["dataset_root_path"]).resolve())
 
+        self._initialize_experiment()
+
     def _initialize_experiment(self) -> None:
         self.all_episodes = []
         self.goals = {}
@@ -70,7 +72,7 @@ class ObjectNavEnv:
             f"Initialized ObjectNavEnv with {self.num_episodes} episodes (split={split})."
         )
 
-    def _initialize_episode(self, episode_ndx: int):
+    def initialize_episode(self, episode_ndx: int):
         episode = self.all_episodes[episode_ndx]
         # Example episode["scene_id"]:
         #   "hm3d/val/00877-4ok3usBNeis/4ok3usBNeis.basis.glb"

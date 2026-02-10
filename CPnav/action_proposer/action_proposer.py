@@ -3,6 +3,7 @@
 import numpy as np
 from .navigability_raycast import DepthNavigabilityRaycaster
 from ..utils import local_to_global
+from .projection_on_image import project_actions_on_image
 import math
 
 
@@ -54,8 +55,6 @@ class ActionProposer:
         """
         Use DepthNavigabilityRaycaster to turn the current depth image into
         lidar-like radial distances:
-
-            a_initial = [(r_i, theta_i), ...]
 
         where r_i is how far you can move along theta_i before hitting an obstacle.
         """
@@ -280,8 +279,20 @@ class ActionProposer:
             [min(original_distance_dict.get(theta, mag), max_dist), theta, e]
             for mag, theta, e in out
         ]
-
-
-        
+    
         return out
+
+    def propose_actions_and_update_voxel(self, obs, voxel):
+        a_initial = self._build_initial_actions(obs)
+        a_remove_explored = self._refine_explored(a_initial, obs["agent_state"], voxel)
+        a_final = self._refine_actions(a_remove_explored)
+
+        voxel.update_from_actions(
+            a_initial,
+            obs["agent_state"],
+            max_action_dist=self.max_action_dist,
+            clip_frac=self.clip_frac,
+        )
+
+        return [(r, theta) for (r, theta, _) in a_final]
 

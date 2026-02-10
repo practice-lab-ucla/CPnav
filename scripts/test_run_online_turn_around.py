@@ -4,14 +4,14 @@ import asyncio
 import numpy as np
 from dotenv import load_dotenv
 
-from CPnav.env import ObjectNavEnv
+from CPnav.env.env import ObjectNavEnv
 from CPnav.logger import GPTStepLogger
-from CPnav.tree import ExplorationTree
+from CPnav.tree.online_exploration_tree import ExplorationTree
 from CPnav.action_proposer.voxel_map import VoxelMap
-from CPnav.projection_on_image import project_actions_on_image
+from CPnav.action_proposer.projection_on_image import project_actions_on_image
 from CPnav.action_proposer.action_proposer import ActionProposer
 from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
-from CPnav.sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
+from CPnav.env.sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
 
 
 async def main():

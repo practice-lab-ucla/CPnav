@@ -232,6 +232,33 @@ class GPTAgent:
         normalized_scores = [round(n, 3) for n in normalized_scores]  # round to # ofdecimal places to avoid long numbers
 
         return normalized_scores
+    
+    async def query_stop_and_action(
+        self,
+        overlay_rgb,
+        goal: str,
+        num_actions: int,
+        timeout_s: Optional[float] = None,
+    ) -> Tuple[StopResult, ActionResult]:
+        stop_coroutine = self.ask_gpt_async(
+            overlay_rgb=overlay_rgb,
+            goal=goal,
+            prompt_type="stopping",
+            num_actions=0,               # ignored for stopping in your code
+            timeout_s=timeout_s,
+        )
+
+        action_coroutine = self.ask_gpt_async(
+            overlay_rgb=overlay_rgb,
+            goal=goal,
+            prompt_type="action",
+            num_actions=num_actions,
+            timeout_s=timeout_s,
+        )
+
+        # Run both concurrently
+        stop_res, action_res = await asyncio.gather(stop_coroutine, action_coroutine)
+        return stop_res, action_res
         
 
 def eval_vlm_response(response: str) -> dict:
@@ -311,30 +338,3 @@ def eval_vlm_response_stopping(response: str) -> dict:
         merged["_warning"] = "conflicting_done_values_detected"
 
     return merged
-
-async def query_stop_and_action(
-    agent: GPTAgent,
-    overlay_rgb,
-    goal: str,
-    num_actions: int,
-    timeout_s: Optional[float] = None,
-) -> Tuple[StopResult, ActionResult]:
-    stop_coroutine = agent.ask_gpt_async(
-        overlay_rgb=overlay_rgb,
-        goal=goal,
-        prompt_type="stopping",
-        num_actions=0,               # ignored for stopping in your code
-        timeout_s=timeout_s,
-    )
-
-    action_coroutine = agent.ask_gpt_async(
-        overlay_rgb=overlay_rgb,
-        goal=goal,
-        prompt_type="action",
-        num_actions=num_actions,
-        timeout_s=timeout_s,
-    )
-
-    # Run both concurrently
-    stop_res, action_res = await asyncio.gather(stop_coroutine, action_coroutine)
-    return stop_res, action_res

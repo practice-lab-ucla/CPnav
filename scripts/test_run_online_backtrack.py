@@ -9,16 +9,14 @@ import numpy as np
 from dotenv import load_dotenv
 from typing import Optional, Tuple
 
+from CPnav.agent import GPTAgent
+from CPnav.env import PolarAction
 from CPnav.env import ObjectNavEnv
-from CPnav.action_proposer.voxel_map import VoxelMap
-from CPnav.projection_on_image import project_actions_on_image
-from CPnav.action_proposer.action_proposer import ActionProposer
-from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
-from CPnav.sim_wrapper import PolarAction
 from CPnav.logger import GPTStepLogger
-from CPnav.tree import ExplorationTree, Pose2D
+from CPnav.tree import OfflineGridTree
 from CPnav.utils import quat_to_yaw_habitat
-from CPnav.offline_bfs import OfflineGridTree
+from CPnav.tree import ExplorationTree, Pose2D
+from CPnav.action_proposer import VoxelMap, project_actions_on_image, ActionProposer
 
 
 def record_node(tree, step_id: int, obs, sorted_actions, gsv, scores):
@@ -45,8 +43,7 @@ async def main():
     tree = ExplorationTree()
     offline_tree = OfflineGridTree(float(cfg["agent_cfg"]["grid_spacing_m"]))
 
-    env._initialize_experiment()
-    goal = env._initialize_episode(0)
+    goal = env.initialize_episode(0)
 
     obs = env.reset()
 
@@ -66,10 +63,7 @@ async def main():
         agent_state = obs["agent_state"]
 
         # --- build actions ---
-        a_initial_raw = ap._build_initial_actions(obs)
-        a_after_explored = ap._refine_explored(a_initial_raw, agent_state, voxel)
-        a_final_full = ap._refine_actions(a_after_explored)
-        actions = [(r, theta) for (r, theta, _) in a_final_full]
+        actions = ap.propose_actions_and_update_voxel(obs, voxel)
 
         sensor_state = agent_state.sensor_states["color_sensor"]
         overlay_rgb = obs["color_sensor"][:, :, :3].copy()
@@ -81,30 +75,21 @@ async def main():
             agent_state,
             sensor_state,
             chosen_index=None,
-            initial_actions=a_initial_raw,
-            show_initial=False,
         )
 
+        voxel_image = voxel.generate_voxel_image(
+            actions_on_image, agent_state
+        )
+
+        # --- query GPT ---
         sorted_actions = [
             PolarAction(r, theta)
             for (r, theta), _
             in sorted(actions_on_image.items(), key=lambda kv: kv[1])
         ]
 
-        voxel_image = voxel.generate_voxel_image(
-            actions_on_image, agent_state, chosen_action=None
-        )
-
-        voxel.update_from_actions(
-            a_initial_raw,
-            agent_state,
-            max_action_dist=ap.max_action_dist,
-            clip_frac=ap.clip_frac,
-        )
-
-        # --- query GPT ---
-        stop_res, action_res = await query_stop_and_action(
-            gpt_agent, overlay_rgb, goal=goal, num_actions=len(sorted_actions)
+        stop_res, action_res = await gpt_agent.query_stop_and_action(
+            overlay_rgb, goal=goal, num_actions=len(sorted_actions)
         )
 
         stop_text, stop_data, _, _ = stop_res
@@ -130,7 +115,7 @@ async def main():
         )
 
         if done:
-            return
+            break
 
         # 1) Record/update the node you are CURRENTLY at
         record_node(tree, cur_node, obs, sorted_actions, gsv, scores)

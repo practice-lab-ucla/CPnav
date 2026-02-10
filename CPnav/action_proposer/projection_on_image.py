@@ -6,7 +6,7 @@ from typing import Iterable, Tuple, Dict, Optional
 import cv2
 import numpy as np
 
-from .utils import (
+from ..utils import (
     agent_frame_to_image_coords,
     calculate_focal_length,
     put_text_on_image,

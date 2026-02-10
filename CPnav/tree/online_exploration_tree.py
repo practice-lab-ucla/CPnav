@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 import math
 import networkx as nx
 
-from .sim_wrapper import PolarAction, TeleopAction
+from ..env.sim_wrapper import PolarAction, TeleopAction
 
 
 StepId = int
