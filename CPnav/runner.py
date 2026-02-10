@@ -2,16 +2,16 @@ import os
 import yaml
 import asyncio
 import numpy as np
+from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Optional, List, Tuple, Dict, Any
 
-from dotenv import load_dotenv
-
-from CPnav.agent import GPTAgent
-from CPnav.env import ObjectNavEnv, PolarAction
 from CPnav.logger import Logger
-from CPnav.tree import ExplorationTree, OfflineGridTree, Pose2D
+from CPnav.agent import GPTAgent
 from CPnav.utils import quat_to_yaw_habitat
+from CPnav.tree import ExplorationTree, OfflineGridTree, Pose2D
+from CPnav.env import ObjectNavEnv, PolarAction, TeleopAction
+
 from CPnav.action_proposer import VoxelMap, project_actions_on_image, ActionProposer
 
 # --- Data Structure for GPT Decisions ---
@@ -37,8 +37,9 @@ class Runner:
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             print("Warning: OPENAI_API_KEY not found in environment variables.")
+        model = self.cfg["agent_cfg"]["model"]
         self.gpt_agent = GPTAgent(
-            model=self.cfg["agent_cfg"]["model"], api_key=api_key
+            model=model, api_key=api_key
         )
 
         # 3. Init State & Memory
@@ -59,6 +60,8 @@ class Runner:
     def initialize(self, episode_id: int = 0):
         """Starts the environment and resets internal state."""
         self.goal = self.env.initialize_episode(episode_id)
+        print("gpt using model", self.gpt_agent.model)
+        print("initializing episode", episode_id, "to find", self.goal)
         obs = self.env.reset()
         self.offline_tree.initialize(obs)
         return obs
@@ -145,7 +148,7 @@ class Runner:
 
         # 2. Tree Record
         self._record_to_tree(obs, sorted_actions, decision.gsv, decision.confidence_scores)
-        self.tree.debug_print_node(0)
+        # self.tree.debug_print_node(0)
 
     def execute_move(self, action, current_obs, action_score=None):
         """
@@ -226,6 +229,11 @@ class Runner:
             gsv=gsv,
             scores=scores,
         )
+    
+    def teleport_agent(self, pose: TeleopAction):
+        """Abstraction for teleporting the agent."""
+        # Assuming env.step accepts a TeleopAction or similar
+        return self.env.step(pose)
 
     @staticmethod
     def get_xz(state_or_obs):

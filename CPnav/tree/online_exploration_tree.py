@@ -1,7 +1,8 @@
+from __future__ import annotations
+
 import math
 import heapq
 import networkx as nx
-from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 

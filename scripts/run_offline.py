@@ -1,6 +1,6 @@
+import os
 import asyncio
 import numpy as np
-import os
 
 from CPnav.runner import Runner
 from CPnav.env import PolarAction
@@ -11,6 +11,7 @@ async def run_offline_search(runner: Runner):
     Main Loop: Continually picks the best 'Global Frontier' and explores
     a new branch from there until the step budget is exhausted.
     """
+    score_threshold = None
     while runner.has_steps():
         # 1. Frontier Selection: Get best global action from Priority Queue
         #    Expected return: (step_id, action_id) based on your updated tree code
@@ -21,7 +22,12 @@ async def run_offline_search(runner: Runner):
             print("No more valid frontiers to explore.")
             break
             
-        step_id, action_id = frontier
+        step_id, action_id, score = frontier
+
+        if isinstance(score_threshold, float):
+            if score < score_threshold:
+                print("Explored all node")
+                break
         
         # 2. Teleportation: Reset agent to the frontier node
         #    (Using a helper method on runner is cleaner than raw env.step)
@@ -40,13 +46,13 @@ async def run_offline_search(runner: Runner):
 
         # 4. Branch Exploration: Hand off to the local loop
         #    This runs until the agent backtracks, finishes, or runs out of steps.
-        obs = await explore_branch(runner, obs)
+        obs, score_threshold = await explore_branch(runner, obs)
         
-        if runner.is_mission_complete():
-            return runner.get_result()
+        # if runner.is_mission_complete():
+        #     return runner.get_result()
 
     # Budget exhausted or graph fully explored
-    return runner.offline_tree.get_best_path_by_score()
+    return runner.offline_tree.get_best_path_by_score()[0]
 
 
 async def explore_branch(runner: Runner, obs):
@@ -89,7 +95,7 @@ async def explore_branch(runner: Runner, obs):
 
         obs = runner.execute_move(action, obs, score)
     
-    return obs
+    return obs, runner.offline_tree.get_best_path_by_score()[0]
 
 
 async def main():
@@ -110,17 +116,17 @@ async def main():
         if decision.done:
             print("Done condition met. Running post-process...")
             runner.record_goal(obs)
-            await run_offline_search(runner)
+            print("score is", await run_offline_search(runner))
+            return
 
         # 5. Act
-        if decision.action_idx == 0:
-            if runner.cur_node_id == 0:
-                # Special Start
-                obs = runner.execute_move(PolarAction(0.0, np.pi), obs)
-            else:
-                # Backtrack
-                obs = runner.execute_backtrack()
-                if obs is None: break
+        if runner.cur_node_id == 0:
+            # Special Start
+            obs = runner.execute_move(PolarAction(0.0, np.pi), obs)
+        elif decision.action_idx == 0:
+            # Backtrack
+            obs = runner.execute_backtrack()
+            if obs is None: break
         else:
             # Normal Move
             idx = int(max(1, min(decision.action_idx, len(sorted_actions))))

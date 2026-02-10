@@ -129,6 +129,7 @@ class OfflineGridTree:
     def get_best_path_by_score(self):
         best_score = 0
         best_path = []
+        assert self.goals is not None
         for goal in self.goals:
             path, score = widest_path_nx(
                 self.G, 
@@ -138,6 +139,6 @@ class OfflineGridTree:
             if score > best_score:
                 best_score = score
                 best_path = path
-        
+        assert best_score is not None
         return best_score, best_path
 
