@@ -9,7 +9,7 @@ def quaternion_to_wxyz(rotation):
     return [rotation.w, rotation.x, rotation.y, rotation.z]
 
 
-class GPTStepLogger:
+class Logger:
     def __init__(self, root_dir: str = "./logs"):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.run_dir = os.path.join(root_dir, f"run_{ts}")

@@ -5,10 +5,10 @@ import numpy as np
 from dotenv import load_dotenv
 
 from CPnav.env.env import ObjectNavEnv
-from CPnav.logger import GPTStepLogger
+from CPnav.logger import Logger
 from CPnav.tree.online_exploration_tree import ExplorationTree
 from CPnav.action_proposer.voxel_map import VoxelMap
-from CPnav.action_proposer.projection_on_image import project_actions_on_image
+from CPnav.action_proposer.project_on_image import project_actions_on_image
 from CPnav.action_proposer.action_proposer import ActionProposer
 from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
 from CPnav.env.sim_wrapper import PolarAction, SimWrapper, NULL_ACTION
@@ -21,7 +21,6 @@ async def main():
         cfg = yaml.safe_load(f)
 
     env = ObjectNavEnv(cfg)
-    tree = ExplorationTree()
 
     env._initialize_experiment()
     env._initialize_episode(0)
@@ -37,7 +36,7 @@ async def main():
     api_key = os.getenv("OPENAI_API_KEY")
     gpt_agent = GPTAgent(model="gpt-4o-mini", api_key=api_key)
 
-    logger = GPTStepLogger("./logs")
+    logger = Logger("./logs")
 
     for _ in range(50):
         print("step", env.step_count)
@@ -89,7 +88,7 @@ async def main():
             clip_frac=ap.clip_frac,
         )
 
-        stop_res, action_res = await query_stop_and_action(gpt_agent, overlay_rgb, goal="toilet", num_actions=len(actions))
+        stop_res, action_res = await gpt_agent.query_stop_and_action(gpt_agent, overlay_rgb, goal="toilet", num_actions=len(actions))
 
         stop_text, stop_data, stop_payload_log, stop_prompt = stop_res
         act_text,  act_data,  act_payload_log,  act_prompt  = action_res

@@ -9,10 +9,10 @@ import numpy as np
 from dotenv import load_dotenv
 from typing import Optional, Tuple
 
+from CPnav.logger import Logger
 from CPnav.agent import GPTAgent
 from CPnav.env import PolarAction
 from CPnav.env import ObjectNavEnv
-from CPnav.logger import GPTStepLogger
 from CPnav.tree import OfflineGridTree
 from CPnav.utils import quat_to_yaw_habitat
 from CPnav.tree import ExplorationTree, Pose2D
@@ -36,7 +36,7 @@ def record_node(tree, step_id: int, obs, sorted_actions, gsv, scores):
 async def main():
     load_dotenv(dotenv_path=".env")
 
-    with open("config/CPNav.yaml", "r") as f:
+    with open("config/CPnav_5_nano.yaml", "r") as f:
         cfg = yaml.safe_load(f)
 
     env = ObjectNavEnv(cfg)
@@ -53,7 +53,7 @@ async def main():
     api_key = os.getenv("OPENAI_API_KEY")
     gpt_agent = GPTAgent(model="gpt-4o-mini", api_key=api_key)
 
-    logger = GPTStepLogger("./logs")
+    logger = Logger("./logs")
 
     next_node_id = 0
     cur_node = next_node_id

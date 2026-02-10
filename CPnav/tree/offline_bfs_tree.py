@@ -85,6 +85,12 @@ class OfflineGridTree:
         self.G = nx.DiGraph()
         self.gs = gs
         self.explored_grid = set()
+        self.goals = set()
+        self.start = None
+
+    def initialize(self, obs):
+        position = obs["agent_state"].position
+        self.start = world_to_grid_00((position[0], position[2]), self.gs)
     
     def grid_explored(self, xz: Tuple[float, float]):
         xz_grid = world_to_grid_00(xz, self.gs)
@@ -111,12 +117,27 @@ class OfflineGridTree:
 
         else:
             self.G.add_edge(from_xz_grid, to_xz_grid, score=score)
+    
+    def add_goal(self, goal_xz):
+        goal  = world_to_grid_00(goal_xz,  self.gs)
+        self.goals.add(goal)
 
-    def best_path_by_score(
-        self,
-        start_xz: Tuple[float, float],
-        goal_xz: Tuple[float, float],
-    ):
-        start = world_to_grid_00(start_xz, self.grid_spacing_m)
-        goal  = world_to_grid_00(goal_xz,  self.grid_spacing_m)
-        return widest_path_nx(self.G, start, goal)
+    def is_goal(self, xz):
+        grid = world_to_grid_00(xz, self.gs)
+        return (grid in self.goals)
+    
+    def get_best_path_by_score(self):
+        best_score = 0
+        best_path = []
+        for goal in self.goals:
+            path, score = widest_path_nx(
+                self.G, 
+                self.start,
+                goal
+            )
+            if score > best_score:
+                best_score = score
+                best_path = path
+        
+        return best_score, best_path
+

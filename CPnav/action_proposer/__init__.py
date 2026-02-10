@@ -1,4 +1,4 @@
 from .voxel_map import VoxelMap
 from .action_proposer import ActionProposer
 from .navigability_raycast import DepthNavigabilityRaycaster
-from .projection_on_image import put_text_on_image, project_actions_on_image
+from .project_on_image import put_text_on_image, project_actions_on_image
