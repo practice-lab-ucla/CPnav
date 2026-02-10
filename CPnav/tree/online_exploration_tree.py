@@ -1,11 +1,12 @@
 from __future__ import annotations
+
+import math
+import heapq
+import networkx as nx
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 
-import math
-import networkx as nx
-
-from .sim_wrapper import PolarAction, TeleopAction
+from ..env.sim_wrapper import PolarAction, TeleopAction
 
 
 StepId = int
@@ -75,18 +76,15 @@ def wrap_to_pi(angle: float) -> float:
 class ExplorationTree:
     """
     Directed tree stored as nx.DiGraph: parent -> child.
-
-    Key capabilities:
-      - record nodes (pose + action proposals)
-      - parent links (tree edges)
-      - track unexplored action indices per node
-      - find a previously visited node with remaining unexplored actions
-      - compute an undirected path between two nodes in the tree
-      - convert a node-path into MOVE_POLAR primitives (r, theta)
+    Includes a Global Priority Queue for actions.
     """
 
     def __init__(self):
         self.G = nx.DiGraph()
+        # Heap storing: (-score, -step_id, action_id)
+        # We use negative score for Max-Heap behavior.
+        # We use negative step_id to break ties by Recency (newer steps first).
+        self.action_pq: List[Tuple[float, int, int]] = [] 
 
     # --------- internal helper ---------
 
@@ -148,7 +146,6 @@ class ExplorationTree:
         print("\nTree links:")
         print(f"  Parent   : {parent}")
         print(f"  Children : {children if children else '(none)'}")
-
         print("=" * 80 + "\n")
 
     # --------- graph recording ---------
@@ -165,17 +162,6 @@ class ExplorationTree:
     ) -> None:
         """
         Add or overwrite a node.
-
-        Inputs:
-          step_id: node id (usually your step index)
-          pose: Pose2D at that step
-          actions: list of ActionProposal produced at that step
-          gsv: optional global semantic value for this step
-          initialize_unexplored: if True, fill unexplored from actions
-          exclude_action0: if True, do not include index==0 in unexplored
-
-        Output:
-          None (mutates graph)
         """
         actions = actions or []
         data = NodeData(step=step_id, pose=pose, actions=actions, gsv=gsv)
@@ -187,6 +173,8 @@ class ExplorationTree:
             data.unexplored = set(idxs)
 
         self.G.add_node(step_id, data=data)
+        
+        # If scores are provided immediately, fill them in (which populates PQ)
         if (scores is not None) and (gsv is not None):
             self.fill_in_scores(step_id, gsv, scores)
 
@@ -194,57 +182,60 @@ class ExplorationTree:
     def link_parent(self, parent_id: StepId, child_id: StepId) -> None:
         """
         Add a directed tree edge parent -> child.
-
-        Inputs:
-          parent_id: existing node id (or will be auto-created if missing)
-          child_id: existing node id (or will be auto-created if missing)
-
-        Output:
-          None (mutates graph)
-
-        Notes:
-          NetworkX will auto-add missing nodes, but they won't have NodeData.
-          In practice, call add_step() for both before linking.
         """
         self.G.add_edge(parent_id, child_id, kind="tree")
 
     # --------- per-node exploration state ---------
 
-    def mark_tried(self, step_id: StepId, action_id: ActionId) -> None:
+    def mark_tried(self, step_id: StepId, action_id: ActionId):
         """
         Mark an action as tried (remove from unexplored set).
-
-        Inputs:
-          step_id: node where action was tried
-          action_id: discrete action index tried
-
-        Output:
-          None (mutates node state)
+        
+        NOTE: This does NOT explicitly remove the item from self.action_pq.
+        We use 'lazy deletion': the item stays in the PQ, but when popped later,
+        we check if it is still in node.unexplored. If not, we discard it.
         """
-        self._node(step_id).unexplored.discard(action_id)
+        if step_id in self.G:
+            self._node(step_id).unexplored.discard(action_id)
+
+    def get_action_score(
+        self,
+        step_id: StepId,
+        action_id: ActionId,
+        default: float = 0.0,
+    ) -> float:
+        """
+        Get the score for (step_id, action_id).
+        """
+        node = self._node(step_id)
+
+        # action_id is 1..N; list index is 0..N-1
+        idx = int(action_id) - 1
+        if idx < 0 or idx >= len(node.actions):
+            raise IndexError(
+                f"get_action_score: step={step_id} action_id={action_id} "
+                f"(idx={idx}) out of range, len(actions)={len(node.actions)}"
+            )
+
+        a = node.actions[idx]
+
+        if a.adjusted is not None:
+            return float(a.adjusted)
+
+        if a.score is not None:
+            return float(a.score)
+
+        return float(default)
 
     def get_unexplored_actions(self, step_id: StepId) -> List[ActionId]:
         """
         Return sorted unexplored action indices for a node.
-
-        Inputs:
-          step_id: node id
-
-        Output:
-          sorted list of action indices (possibly empty)
         """
         return sorted(self._node(step_id).unexplored)
 
     def find_node_with_unexplored_actions(self, start_step_id: StepId) -> Optional[StepId]:
         """
-        Recency-biased scan: from start_step_id down to 0, find first node
-        that still has unexplored actions.
-
-        Inputs:
-          start_step_id: where to start scanning backward (e.g., current step)
-
-        Output:
-          step_id of the first node found with unexplored actions, or None.
+        Recency-biased scan: from start_step_id down to 0.
         """
         for step in range(start_step_id, -1, -1):
             if step in self.G and len(self._node(step).unexplored) > 0:
@@ -256,15 +247,6 @@ class ExplorationTree:
     def get_parent(self, step_id: StepId) -> Optional[StepId]:
         """
         Get the unique tree parent of step_id.
-
-        Inputs:
-          step_id: node id
-
-        Output:
-          parent id, or None if root
-
-        Raises:
-          RuntimeError if more than one parent exists (violates tree assumption).
         """
         preds = list(self.G.predecessors(step_id))
         if len(preds) > 1:
@@ -274,15 +256,6 @@ class ExplorationTree:
     def path_from_a_to_b(self, a: StepId, b: StepId) -> Tuple[List[StepId]]:
         """
         Compute the unique undirected path between a and b in a directed tree.
-
-        Inputs:
-          a, b: node ids
-
-        Output:
-          list of node ids [a, ..., b]
-
-        Raises:
-          ValueError if a and b are not connected within the tree.
         """
         if a not in self.G or b not in self.G:
             raise KeyError(f"a and/or b not in graph: a={a in self.G}, b={b in self.G}")
@@ -318,21 +291,6 @@ class ExplorationTree:
     def path_to_move_delta(self, path: List[StepId], in_reverse: bool=False) -> List[Tuple[float, float]]:
         """
         Convert a node-path [s0, s1, ..., sk] into a sequence of MOVE_POLAR commands.
-
-        Input:
-          path: list of StepId, consecutive nodes in the TREE path
-          in_reverse: bool, if true the car first move backward and rotate
-
-        Output:
-          commands: list of (r, theta) where:
-            - theta is delta-yaw to face the next node
-            - r is straight-line distance to the next node
-          Length = len(path) - 1
-
-        Assumptions:
-          - Pose2D is in a consistent world frame.
-          - MOVE_POLAR executes: rotate(theta) then translate_forward(r).
-          - We assume perfect execution (no drift), updating yaw to the travel heading each hop.
         """
         if len(path) < 2:
             return []
@@ -356,18 +314,11 @@ class ExplorationTree:
             else:
                 cmds.append((-r, dtheta))
 
-            # Update our "executed" pose estimate after this primitive
-            # We assume we end up exactly at next_pose position and yaw aligned with desired heading.
             cur_pose = Pose2D(x=next_pose.x, y=next_pose.y, yaw=next_pose.yaw)
 
         return cmds
 
     def _action_score(self, node: NodeData, a: ActionProposal) -> float:
-        """
-        Default score used for action selection.
-        Prefers `adjusted` if present, otherwise falls back to `score`, otherwise 0.
-        You can replace this with anything.
-        """
         if a.adjusted is not None:
             return float(a.adjusted)
         if a.score is not None:
@@ -382,16 +333,7 @@ class ExplorationTree:
         score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,
     ) -> Optional[ActionId]:
         """
-        Pick the best UNEXPLORED action at a given node.
-
-        Inputs:
-        step_id: node to expand
-        score_threshold: ignore actions with score <= threshold
-        exclude_action0: ignore index==0 if True
-        score_fn: custom scoring (node, action) -> float
-
-        Output:
-        action_id (index) of best unexplored action, or None if none available.
+        Pick the best UNEXPLORED action at a specific node (Local Choice).
         """
         node = self._node(step_id)
         if score_fn is None:
@@ -412,56 +354,36 @@ class ExplorationTree:
 
         return best[0] if best else None
 
-    def select_global_target_recency_first(
-        self,
-        current_step_id: StepId,
-        *,
-        score_threshold: float = 0.0,
-        exclude_action0: bool = True,
-        score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,
-    ) -> Optional[StepId]:
+    # --------- Priority Queue Logic ---------
+
+    def get_best_global_action(self) -> Optional[Tuple[StepId, ActionId]]:
         """
-        Recency-first global target selection (matches your friend's behavior):
-        - scan steps newest -> oldest
-        - return the FIRST step that has at least one valid unexplored action (passing threshold)
-
-        Output:
-        target step_id or None.
+        Pops the highest priority action from the Global Priority Queue.
+        Checks validity (lazy deletion) against the 'unexplored' set.
+        
+        Returns:
+            (step_id, action_id) or None if PQ is empty/exhausted.
         """
-        if score_fn is None:
-            score_fn = lambda n, a: self._action_score(n, a)
+        while self.action_pq:
+            # Pop: (-score, -step_id, action_id)
+            neg_score, neg_step, action_id = heapq.heappop(self.action_pq)
+            step_id = -neg_step
 
-        for step in range(current_step_id, -1, -1):
-            if step not in self.G:
+            # Verify node still exists
+            if step_id not in self.G:
                 continue
-            node = self._node(step)
+            
+            node = self._node(step_id)
 
-            # quick pre-check: any unexplored at all?
-            if not node.unexplored:
-                continue
-
-            # confirm at least one valid unexplored action passing threshold
-            for a in node.actions:
-                idx = int(a.index)
-                if exclude_action0 and idx == 0:
-                    continue
-                if idx not in node.unexplored:
-                    continue
-                if float(score_fn(node, a)) >= score_threshold:
-                    return step
-
+            # Verify action is still unexplored (Lazy Deletion check)
+            if action_id in node.unexplored:
+                return step_id, action_id, -neg_score
+                
         return None
 
     def fill_in_scores(self, step_id: StepId, gsv: float, action_scores: List[float]) -> None:
         """
-        Fills per-action score and adjusted = score * gsv for actions 1..N at this node.
-
-        Expected shapes:
-        - If GPT includes action 0: len(action_scores) == N + 1  (index 0 is rewind)
-        - If GPT excludes action 0: len(action_scores) == N
-        We will robustly adapt if GPT returns too many / too few scores.
-
-        NOTE: We do NOT normalize by default (your prompt says don't force sum to 1).
+        Fills per-action score, adjusted = score * gsv, AND pushes to Global PQ.
         """
         node = self._node(step_id)
         node.gsv = float(gsv)
@@ -481,41 +403,41 @@ class ExplorationTree:
             scores.append(v)
 
         # --- decide whether action 0 is present ---
-        # Prefer the common case: M == N+1 => includes action 0
-        has_action0: Optional[bool] = None
         if M == N + 1:
             has_action0 = True
         elif M == N:
             has_action0 = False
         else:
-            # Heuristic: if M > N, treat first as action0 and take next N
-            # If M < N, assume no action0 and pad.
             has_action0 = (M > N)
 
-        # if has_action0:
-        #     # action 0 exists at index 0
-        #     node.rewind_score = scores[0]  # optional; only if you want to store it
-        #     scores_1_to_N = scores[1:1 + N]
-        # else:
+        # We assume scores map 1-to-1 to actions array (handling indices appropriately)
+        # Simplify logic: just map first N available scores to the N stored actions
         scores_1_to_N = scores[:N]
 
         # --- pad or clip to exactly N ---
         if len(scores_1_to_N) < N:
             scores_1_to_N = scores_1_to_N + [0.0] * (N - len(scores_1_to_N))
-        elif len(scores_1_to_N) > N:
-            scores_1_to_N = scores_1_to_N[:N]
-
-        # --- assign ---
+        
+        # --- assign and push to PQ ---
         for i, a in enumerate(node.actions):
             s = scores_1_to_N[i]
             a.score = s
             a.adjusted = s * node.gsv
+            
+            # Add to PQ if currently unexplored
+            if a.index in node.unexplored:
+                # Use adjusted score for priority, fallback to raw score
+                priority = a.adjusted
+                
+                # Push: (-priority, -step_id, action_index)
+                # 1. Negative priority => Max Heap
+                # 2. Negative step_id => Tie-break: Prefer newer steps (Recency)
+                heapq.heappush(self.action_pq, (-priority, -step_id, a.index))
 
     @staticmethod
     def to_action_proposal(sorted_actions):
         """
         GPT action indices are 1..N (0 reserved for backtrack).
-        Build ActionProposal list that matches those indices.
         """
         proposals = []
         for i, a in enumerate(sorted_actions):
@@ -530,9 +452,7 @@ class ExplorationTree:
         exclude_action0: bool = True,
         score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,) -> Optional[Tuple[int, int]]:
         """
-        Returns (target_step_id, action_id) for local backtrack:
-        go to parent, choose the unexplored action with the highest 
-        score that's above threshold.
+        Local backtrack: go to parent, pick best child.
         """
         parent = self.get_parent(step_id)
         if parent is None:
@@ -548,31 +468,12 @@ class ExplorationTree:
 
         return parent, next_action
     
-    def global_backtrack(
-        self,
-        step_id: StepId,
-        *,
-        score_threshold: float = 0.0,
-        exclude_action0: bool = True,
-        score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,) -> Optional[Tuple[int, int]]:
+    def global_backtrack(self) -> Optional[Tuple[int, int]]:
         """
-        Returns (target_step_id, action_id) for global backtrack:
-        go to parent, choose the unexplored action with the highest 
-        score that's above threshold.
+        Uses the Global Priority Queue to find the highest scoring unexplored action
+        anywhere in the tree.
         """
-
-        target_step = self.select_global_target_recency_first(step_id, score_threshold=0.0)
-        if target_step is None:
-            # nowhere left to explore
-            return None
-
-        target_action_id = self.select_next_action_at(target_step, score_threshold, exclude_action0, score_fn)
-
-        if target_action_id is None:
-            # should be rare since select_global_target... ensured at least one, but be safe
-            return None
-        
-        return (target_step, target_action_id)
+        return self.get_best_global_action()
 
     def get_node_position(self, step_id: StepId):
         pose = self._node(step_id).pose
@@ -581,15 +482,8 @@ class ExplorationTree:
 
     def get_node_action(self, step_id: StepId, action_id: ActionId):
         node = self._node(step_id)
-
-        # action_id is 1..N; list index is 0..N-1
         idx = int(action_id) - 1
-
         if idx < 0 or idx >= len(node.actions):
-            raise IndexError(
-                f"get_node_action: step={step_id} action_id={action_id} "
-                f"(idx={idx}) out of range, len(actions)={len(node.actions)}"
-            )
-
+            raise IndexError(f"get_node_action invalid index: {idx}")
         a = node.actions[idx]
         return PolarAction(r=float(a.r), theta=float(a.theta))

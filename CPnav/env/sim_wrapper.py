@@ -4,7 +4,7 @@ import habitat_sim
 import magnum as mn
 import numpy as np
 from typing import Optional
-from .utils import local_to_global
+from ..utils import local_to_global
 
 from habitat_sim.utils.common import quat_from_angle_axis, quat_to_angle_axis
 

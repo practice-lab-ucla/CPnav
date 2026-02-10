@@ -9,15 +9,14 @@ import numpy as np
 from dotenv import load_dotenv
 from typing import Optional, Tuple
 
+from CPnav.logger import Logger
+from CPnav.agent import GPTAgent
+from CPnav.env import PolarAction
 from CPnav.env import ObjectNavEnv
-from CPnav.action_proposer.voxel_map import VoxelMap
-from CPnav.projection_on_image import project_actions_on_image
-from CPnav.action_proposer.action_proposer import ActionProposer
-from CPnav.agent.gpt_agent import GPTAgent, query_stop_and_action
-from CPnav.sim_wrapper import PolarAction
-from CPnav.logger import GPTStepLogger
-from CPnav.tree import ExplorationTree, Pose2D
+from CPnav.tree import OfflineGridTree
 from CPnav.utils import quat_to_yaw_habitat
+from CPnav.tree import ExplorationTree, Pose2D
+from CPnav.action_proposer import VoxelMap, project_actions_on_image, ActionProposer
 
 
 def record_node(tree, step_id: int, obs, sorted_actions, gsv, scores):
@@ -37,14 +36,14 @@ def record_node(tree, step_id: int, obs, sorted_actions, gsv, scores):
 async def main():
     load_dotenv(dotenv_path=".env")
 
-    with open("config/CPNav.yaml", "r") as f:
+    with open("config/CPnav_5_nano.yaml", "r") as f:
         cfg = yaml.safe_load(f)
 
     env = ObjectNavEnv(cfg)
     tree = ExplorationTree()
+    offline_tree = OfflineGridTree(float(cfg["agent_cfg"]["grid_spacing_m"]))
 
-    env._initialize_experiment()
-    env._initialize_episode(0)
+    goal = env.initialize_episode(0)
 
     obs = env.reset()
 
@@ -54,7 +53,7 @@ async def main():
     api_key = os.getenv("OPENAI_API_KEY")
     gpt_agent = GPTAgent(model="gpt-4o-mini", api_key=api_key)
 
-    logger = GPTStepLogger("./logs")
+    logger = Logger("./logs")
 
     next_node_id = 0
     cur_node = next_node_id
@@ -64,10 +63,7 @@ async def main():
         agent_state = obs["agent_state"]
 
         # --- build actions ---
-        a_initial_raw = ap._build_initial_actions(obs)
-        a_after_explored = ap._refine_explored(a_initial_raw, agent_state, voxel)
-        a_final_full = ap._refine_actions(a_after_explored)
-        actions = [(r, theta) for (r, theta, _) in a_final_full]
+        actions = ap.propose_actions_and_update_voxel(obs, voxel)
 
         sensor_state = agent_state.sensor_states["color_sensor"]
         overlay_rgb = obs["color_sensor"][:, :, :3].copy()
@@ -79,30 +75,21 @@ async def main():
             agent_state,
             sensor_state,
             chosen_index=None,
-            initial_actions=a_initial_raw,
-            show_initial=False,
         )
 
+        voxel_image = voxel.generate_voxel_image(
+            actions_on_image, agent_state
+        )
+
+        # --- query GPT ---
         sorted_actions = [
             PolarAction(r, theta)
             for (r, theta), _
             in sorted(actions_on_image.items(), key=lambda kv: kv[1])
         ]
 
-        voxel_image = voxel.generate_voxel_image(
-            actions_on_image, agent_state, chosen_action=None
-        )
-
-        voxel.update_from_actions(
-            a_initial_raw,
-            agent_state,
-            max_action_dist=ap.max_action_dist,
-            clip_frac=ap.clip_frac,
-        )
-
-        # --- query GPT ---
-        stop_res, action_res = await query_stop_and_action(
-            gpt_agent, overlay_rgb, goal="toilet", num_actions=len(sorted_actions)
+        stop_res, action_res = await gpt_agent.query_stop_and_action(
+            overlay_rgb, goal=goal, num_actions=len(sorted_actions)
         )
 
         stop_text, stop_data, _, _ = stop_res
@@ -128,10 +115,12 @@ async def main():
         )
 
         if done:
-            return
+            break
 
         # 1) Record/update the node you are CURRENTLY at
         record_node(tree, cur_node, obs, sorted_actions, gsv, scores)
+
+        tree.debug_print_node(0)
 
         # --------------------------
         # Decide + execute movement
@@ -171,10 +160,7 @@ async def main():
             # (A) teleop to existing target node (does NOT create a new node)
             obs = env.step(tree.get_node_position(target_step))
             prev_node = cur_node
-            cur_node = target_step  # now we're "at" that node
-
-            # optional but often useful: update the node we teleported to
-            # record_node(tree, cur_node, obs, sorted_actions, gsv, scores)
+            cur_node = target_step
 
             # (B) mark tried on the node we act FROM
             tree.mark_tried(cur_node, target_action_id)
@@ -183,11 +169,20 @@ async def main():
             new_node = next_node_id
             next_node_id += 1
 
-            tree.link_parent(cur_node, new_node)  # link immediately
-            obs = env.step(tree.get_node_action(cur_node, target_action_id))
+            tree.link_parent(cur_node, new_node)
+
+            xz_prev = (obs["agent_state"].position[0], obs["agent_state"].position[2])
+            action_score = tree.get_action_score(cur_node, target_action_id)
+            action = tree.get_node_action(cur_node, target_action_id)
+            
+            obs = env.step(action)
+            
+            xz_new = (obs["agent_state"].position[0], obs["agent_state"].position[2])
+            offline_tree.add_edge(xz_prev, xz_new, action_score)
             cur_node = new_node
 
             print("step", prev_node, "rewind -> step", target_step, "action", target_action_id)
+
 
         else:
             action_selected = int(max(1, min(action_selected, N)))
@@ -195,13 +190,17 @@ async def main():
 
             tree.mark_tried(cur_node, action_selected)
 
+            action_score = tree.get_action_score(cur_node, action_selected)
             action = sorted_actions[action_selected - 1]
 
             new_node = next_node_id
             next_node_id += 1
 
-            tree.link_parent(cur_node, new_node)  # link immediately
+            xz_prev = (obs["agent_state"].position[0], obs["agent_state"].position[2])
+            tree.link_parent(cur_node, new_node)
             obs = env.step(action)
+            xz_new = (obs["agent_state"].position[0], obs["agent_state"].position[2])
+            offline_tree.add_edge(xz_prev, xz_new, action_score)
             cur_node = new_node
 
 
