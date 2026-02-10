@@ -1,6 +1,7 @@
 import heapq
 import math
 import networkx as nx
+import matplotlib.pyplot as plt
 from typing import Any, Dict, List, Optional, Tuple
 
 def world_to_grid_00(pos: Tuple[float, float], grid_spacing_m: float) -> Tuple[int, int]:
@@ -141,4 +142,108 @@ class OfflineGridTree:
                 best_path = path
         assert best_score is not None
         return best_score, best_path
+
+def visualize_tree(tree: OfflineGridTree, filename: str = "offline_tree_debug.png"):
+    """
+    Visualizes the OfflineGridTree structure, saving it to a PNG file.
+    - Nodes are placed physically based on (row, col).
+    - Edges show scores.
+    - Start (Green) and Goals (Gold) are highlighted.
+    """
+    if tree.G.number_of_nodes() == 0:
+        print("[Visualizer] Graph is empty. Nothing to plot.")
+        return
+
+    plt.figure(figsize=(12, 10))
+    
+    # 1. Setup Position Layout
+    # Mapping (row, col) -> (x, y) for plotting.
+    # We use (col, -row) so that the grid visual matches matrix indexing 
+    # (row 0 at top, row N at bottom).
+    pos = {n: (n[1], -n[0]) for n in tree.G.nodes()}
+    
+    # If start is defined but not in graph (isolated), add it to pos for plotting
+    if tree.start and tree.start not in pos:
+        pos[tree.start] = (tree.start[1], -tree.start[0])
+
+    # 2. Categorize Nodes
+    goals_in_graph = [n for n in tree.goals if n in tree.G]
+    start_node = [tree.start] if tree.start else []
+    
+    # Regular nodes are those that are not start or goals
+    regular_nodes = [
+        n for n in tree.G.nodes() 
+        if n not in tree.goals and n != tree.start
+    ]
+
+    # 3. Draw Nodes
+    # Draw Regular
+    nx.draw_networkx_nodes(
+        tree.G, pos, 
+        nodelist=regular_nodes, 
+        node_color='lightblue', 
+        node_size=500, 
+        alpha=0.8
+    )
+
+    # Draw Start
+    if start_node:
+        nx.draw_networkx_nodes(
+            tree.G, pos, 
+            nodelist=start_node, 
+            node_color='lightgreen', 
+            node_size=600, 
+            node_shape='s', # Square for start
+            label='Start'
+        )
+
+    # Draw Goals
+    if goals_in_graph:
+        nx.draw_networkx_nodes(
+            tree.G, pos, 
+            nodelist=goals_in_graph, 
+            node_color='gold', 
+            node_size=600, 
+            node_shape='*', # Star for goal
+            label='Goal'
+        )
+
+    # 4. Draw Labels (Node IDs)
+    # Label format: "(row,col)"
+    node_labels = {n: str(n) for n in tree.G.nodes()}
+    if tree.start and tree.start not in node_labels:
+        node_labels[tree.start] = str(tree.start)
+        
+    nx.draw_networkx_labels(tree.G, pos, labels=node_labels, font_size=8)
+
+    # 5. Draw Edges
+    nx.draw_networkx_edges(
+        tree.G, pos, 
+        arrowstyle='->', 
+        arrowsize=20, 
+        edge_color='gray', 
+        alpha=0.5
+    )
+
+    # 6. Draw Edge Scores
+    edge_labels = nx.get_edge_attributes(tree.G, 'score')
+    # Format float scores to 2 decimal places
+    formatted_edge_labels = {k: f"{v:.2f}" for k, v in edge_labels.items()}
+    
+    nx.draw_networkx_edge_labels(
+        tree.G, pos, 
+        edge_labels=formatted_edge_labels, 
+        font_color='red', 
+        font_size=9
+    )
+
+    # Final Polish
+    plt.title(f"Offline Tree Visualization\nGrid Spacing: {tree.gs}m")
+    plt.legend(loc='upper left', bbox_to_anchor=(1, 1))
+    plt.axis('off') # Turn off axis numbers
+    plt.tight_layout()
+    
+    plt.savefig(filename, dpi=150)
+    plt.close()
+    print(f"[Visualizer] Tree saved to {filename}")
 

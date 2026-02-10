@@ -9,9 +9,8 @@ from typing import Optional, List, Tuple, Dict, Any
 from CPnav.logger import Logger
 from CPnav.agent import GPTAgent
 from CPnav.utils import quat_to_yaw_habitat
-from CPnav.tree import ExplorationTree, OfflineGridTree, Pose2D
 from CPnav.env import ObjectNavEnv, PolarAction, TeleopAction
-
+from CPnav.tree import ExplorationTree, OfflineGridTree, Pose2D, visualize_tree
 from CPnav.action_proposer import VoxelMap, project_actions_on_image, ActionProposer
 
 # --- Data Structure for GPT Decisions ---
@@ -148,6 +147,13 @@ class Runner:
 
         # 2. Tree Record
         self._record_to_tree(obs, sorted_actions, decision.gsv, decision.confidence_scores)
+
+        # 3. Save offline tree info for debugging
+        visualize_tree(
+            self.offline_tree, 
+            os.path.join(self.logger.img_dir, f"{self.step_count}_offline_tree.png")
+        )
+        
         # self.tree.debug_print_node(0)
 
     def execute_move(self, action, current_obs, action_score=None):
