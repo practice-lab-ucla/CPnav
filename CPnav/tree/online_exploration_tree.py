@@ -468,12 +468,86 @@ class ExplorationTree:
 
         return parent, next_action
     
-    def global_backtrack(self) -> Optional[Tuple[int, int]]:
+    def global_backtrack(
+        self,
+        step_id: StepId,
+        *,
+        score_threshold: float = 0.0,
+        exclude_action0: bool = True,
+        score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,
+    ) -> Optional[Tuple[int, int]]:
         """
-        Uses the Global Priority Queue to find the highest scoring unexplored action
-        anywhere in the tree.
+        Returns (target_step_id, action_id) for global backtrack.
+        Uses recency-first strategy to find the first ancestor with valid options.
         """
-        return self.get_best_global_action()
+        
+        target_step = self.select_global_target_recency_first(
+            current_step_id=step_id,
+            score_threshold=score_threshold,
+            exclude_action0=exclude_action0,
+            score_fn=score_fn
+        )
+
+        if target_step is None:
+            # Nowhere left to explore in the entire history
+            return None
+
+        # Now pick the specific action at that node
+        target_action_id = self.select_next_action_at(
+            target_step, 
+            score_threshold, 
+            exclude_action0, 
+            score_fn
+        )
+
+        if target_action_id is None:
+            # This handles the rare edge case where a node was selected, 
+            # but for some reason select_next_action_at disagrees.
+            # Ideally, we should loop and try finding the *next* target_step, 
+            # but returning None is safe behavior.
+            return None
+        
+        return (target_step, target_action_id)
+    
+    def select_global_target_recency_first(
+        self,
+        current_step_id: StepId,
+        *,
+        score_threshold: float = 0.0,
+        exclude_action0: bool = True,
+        score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,
+    ) -> Optional[StepId]:
+        """
+        Recency-first global target selection (matches your friend's behavior):
+        - scan steps newest -> oldest
+        - return the FIRST step that has at least one valid unexplored action (passing threshold)
+
+        Output:
+        target step_id or None.
+        """
+        if score_fn is None:
+            score_fn = lambda n, a: self._action_score(n, a)
+
+        for step in range(current_step_id, -1, -1):
+            if step not in self.G:
+                continue
+            node = self._node(step)
+
+            # quick pre-check: any unexplored at all?
+            if not node.unexplored:
+                continue
+
+            # confirm at least one valid unexplored action passing threshold
+            for a in node.actions:
+                idx = int(a.index)
+                if exclude_action0 and idx == 0:
+                    continue
+                if idx not in node.unexplored:
+                    continue
+                if float(score_fn(node, a)) >= score_threshold:
+                    return step
+
+        return None
 
     def get_node_position(self, step_id: StepId):
         pose = self._node(step_id).pose

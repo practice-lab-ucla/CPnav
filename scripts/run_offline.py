@@ -123,7 +123,7 @@ async def main():
         if runner.cur_node_id == 0:
             # Special Start
             obs = runner.execute_move(PolarAction(0.0, np.pi), obs)
-        elif decision.action_idx == 0:
+        elif (decision.action_idx == 0) or (len(sorted_actions) == 0):
             # Backtrack
             obs = runner.execute_backtrack()
             if obs is None: break
