@@ -46,22 +46,27 @@ class Runner:
         self.offline_tree = OfflineGridTree(
             float(self.cfg["agent_cfg"]["grid_spacing_m"])
         )
-        self.logger = Logger("./logs")
+        self.logger = None
         self.ap = ActionProposer(self.cfg)
         self.voxel = VoxelMap(self.cfg)
         
         # 4. Tracking Variables
         self.cur_node_id = 0
         self.next_node_id = 1
-        self.step_count = 0
-        self.goal = None
+        self.goal = Logger("./logs")
+        self.tried_step0_turnaround = False
+        self.history = []
+        self.start_xz = None
 
     def initialize(self, episode_id: int = 0):
         """Starts the environment and resets internal state."""
         self.goal = self.env.initialize_episode(episode_id)
         print("gpt using model", self.gpt_agent.model)
         print("initializing episode", episode_id, "to find", self.goal)
+        
         obs = self.env.reset()
+        start_position = obs["agent_state"].position
+        self.start_xz = (start_position[0], start_position[2])
         self.offline_tree.initialize(obs)
         return obs
 
@@ -151,7 +156,7 @@ class Runner:
         # 3. Save offline tree info for debugging
         visualize_tree(
             self.offline_tree, 
-            os.path.join(self.logger.img_dir, f"{self.step_count}_offline_tree.png")
+            os.path.join(self.logger.img_dir, f"{self.cur_node_id:04d}_offline_tree.png")
         )
         
         # self.tree.debug_print_node(0)
@@ -178,9 +183,7 @@ class Runner:
             self.offline_tree.add_edge(prev_xz, curr_xz, action_score)
 
         # Update Internal Pointer
-        self.cur_node_id = new_node
-        self.step_count += 1
-        
+        self.cur_node_id = new_node        
         return obs
 
     def execute_backtrack(self):
@@ -199,11 +202,24 @@ class Runner:
             # Passing next_node_id - 1 essentially implies checking from the most recent node backwards
             res = self.tree.global_backtrack(self.next_node_id - 1)
             if not res:
-                print("No more actions to backtrack! Exploration exhausted.")
-                return None
+                if self.tried_step0_turnaround:
+                    print("No more actions to backtrack! Exploration exhausted.")
+                    return None
+                else:
+                    # try turn around action at step 0
+                    target_pos = self.tree.get_node_position(0)
+                    self.cur_node_id = 0
+                    obs = self.env.step(target_pos)
+
+                    print(f"Rewinding: Node {self.cur_node_id} -> Node {target_step} (Action turnaround)")
+                    self.history.append(f"{self.cur_node_id}->{target_step} turnaround")
+
+                    return self.execute_move(PolarAction(0.0, np.pi), obs)
+
             target_step, target_action_id = res
 
         print(f"Rewinding: Node {self.cur_node_id} -> Node {target_step} (Action {target_action_id})")
+        self.history.append(f"{self.cur_node_id}->{target_step} {target_action_id}")
 
         # 2. Teleport
         # We assume env.step() can take a position vector for teleportation
@@ -221,6 +237,19 @@ class Runner:
         
         # Execute the move (this will create a NEW node branching off the old one)
         return self.execute_move(action, obs, score)
+    
+    def execute_forward(self, action_idx, obs):
+        """execute action_idx at current node"""
+        self.tree.mark_tried(self.cur_node_id, action_idx)
+        self.history.append(f"{self.cur_node_id}->{self.cur_node_id} {action_idx}")
+        action = self.tree.get_node_ation(self.cur_node_id, action_idx)
+        score = self.tree.get_action_score(self.cur_node_id, action_idx)
+        return self.execute_move(action, obs, score)
+    
+    def execute_turnaround(self, obs):
+        self.tried_step0_turnaround = True
+        self.history.append(f"{self.cur_node_id}->{self.cur_node_id} turnaround")
+        return self.execute_move(PolarAction(0, np.pi), obs)
 
     def _record_to_tree(self, obs, sorted_actions, gsv, scores):
         """Internal helper to add a node to the ExplorationTree."""
@@ -251,7 +280,7 @@ class Runner:
         return (state.position[0], state.position[2])
     
     def has_steps(self):
-        return self.step_count < int(self.cfg["env_cfg"]["max_steps"])
+        return self.env.step_count < int(self.cfg["env_cfg"]["max_steps"])
     
     def record_goal(self, obs):
         state = obs["agent_state"]

@@ -151,7 +151,6 @@ def visualize_tree(tree: OfflineGridTree, filename: str = "offline_tree_debug.pn
     - Start (Green) and Goals (Gold) are highlighted.
     """
     if tree.G.number_of_nodes() == 0:
-        print("[Visualizer] Graph is empty. Nothing to plot.")
         return
 
     plt.figure(figsize=(12, 10))
@@ -245,5 +244,4 @@ def visualize_tree(tree: OfflineGridTree, filename: str = "offline_tree_debug.pn
     
     plt.savefig(filename, dpi=150)
     plt.close()
-    print(f"[Visualizer] Tree saved to {filename}")
 

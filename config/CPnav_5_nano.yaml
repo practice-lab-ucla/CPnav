@@ -75,7 +75,7 @@ agent_cfg:
 
   # --- Mapping & Projection ---
   meters_per_pixel: 0.005
-  grid_spacing_m: 0.7
+  grid_spacing_m: 0.5
   map_scale: 100
   image_edge_threshold: 0.04
 

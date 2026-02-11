@@ -32,6 +32,11 @@ async def run_offline_search(runner: Runner):
         # 2. Teleportation: Reset agent to the frontier node
         #    (Using a helper method on runner is cleaner than raw env.step)
         target_pose = runner.tree.get_node_position(step_id)
+
+        # avoid backtrack to goal node
+        if runner.offline_tree.is_goal((target_pose.x, target_pose.z)):
+            continue
+
         obs = runner.teleport_agent(target_pose) 
 
         # 3. Branch Initialization: Execute the specific queued action 
@@ -61,46 +66,42 @@ async def explore_branch(runner: Runner, obs):
     continues until a stopping condition is met.
     """
     while runner.has_steps():
-        # A. Check Early Exit: Have we stumbled into an area we already mapped?
-        pos = obs["agent_state"].position
-        if runner.offline_tree.grid_explored((pos[0], pos[2])):
-            print("Branch merged into explored territory. Stopping branch.")
-            break
-
-        # B. Perceive
+        # A. Perceive
         overlay, voxel_img, sorted_actions, actions = runner.perceive(obs)
 
-        # C. Decide
+        # B. Decide
         decision = await runner.decide(overlay, sorted_actions)
 
-        # D. Log
+        # C. Log
         runner.log_and_record(obs, decision, overlay, voxel_img, actions, sorted_actions)
-
-        # E. Handle High-Level Outcomes
+        
+        # D. Handle High-Level Outcomes
         if decision.done:
             runner.record_goal(obs)
             break
         
-        if decision.action_idx == 0:
+        if (decision.action_idx == 0) or (len(sorted_actions) == 0):
             # "Backtrack" / Turn-around means this branch is dead.
             # We return to the main loop to pick a NEW global frontier.
             break
 
-        # F. Act (Move Forward)
+        # E. Act (Move Forward)
+
         idx = int(max(1, min(decision.action_idx, len(sorted_actions))))
-        runner.tree.mark_tried(runner.cur_node_id, idx)
+        obs = runner.execute_forward(idx, obs)
 
-        action = sorted_actions[idx - 1]
-        score = runner.tree.get_action_score(runner.cur_node_id, idx)
-
-        obs = runner.execute_move(action, obs, score)
+        # F. Check Early Exit: Have we stumbled into an area we already mapped?
+        pos = obs["agent_state"].position
+        if runner.offline_tree.grid_explored((pos[0], pos[2])):
+            print("Branch merged into explored territory. Stopping branch.")
+            break
     
     return obs, runner.offline_tree.get_best_path_by_score()[0]
 
 
 async def main():
-    runner = Runner("config/CPnav_5_nano.yaml")
-    obs = runner.initialize()
+    runner = Runner("config/CPnav_4o_mini.yaml")
+    obs = runner.initialize(100)
 
     while runner.has_steps():
         # 1. Perceive
@@ -108,11 +109,11 @@ async def main():
 
         # 2. Decide
         decision = await runner.decide(overlay, sorted_actions)
-
+        
         # 3. Log
         runner.log_and_record(obs, decision, overlay, voxel_img, actions, sorted_actions)
 
-        # 4. Handle "Done" Logic (Your specific request)
+        # 4. Handle "Done" Logic, do not record goal node
         if decision.done:
             print("Done condition met. Running post-process...")
             runner.record_goal(obs)
@@ -120,9 +121,9 @@ async def main():
             return
 
         # 5. Act
-        if runner.cur_node_id == 0:
+        if (decision.action_idx == 0) and (runner.cur_node_id == 0):
             # Special Start
-            obs = runner.execute_move(PolarAction(0.0, np.pi), obs)
+            obs = runner.execute_turnaround(obs)
         elif (decision.action_idx == 0) or (len(sorted_actions) == 0):
             # Backtrack
             obs = runner.execute_backtrack()
@@ -130,12 +131,7 @@ async def main():
         else:
             # Normal Move
             idx = int(max(1, min(decision.action_idx, len(sorted_actions))))
-            runner.tree.mark_tried(runner.cur_node_id, idx)
-            
-            action = sorted_actions[idx - 1]
-            score = runner.tree.get_action_score(runner.cur_node_id, idx)
-            
-            obs = runner.execute_move(action, obs, score)
+            obs = runner.execute_forward(idx, obs)
 
 if __name__ == "__main__":
     asyncio.run(main())
