@@ -74,3 +74,39 @@ class Logger:
             json.dump(meta, f, indent=2)
 
         self.step += 1
+
+    def save_terminal_data(
+        self,
+        goal_text: str,
+        step_count: int,
+        total_distance: float,
+        start_xz: Tuple[float, float],
+        end_xz: Tuple[float, float],
+        geodesic_distance: float,
+        last_image
+    ):
+        """
+        Saves final episode metadata and the terminal image.
+        """
+        # 1. Save Terminal Image
+        if last_image is not None:
+            term_img_path = os.path.join(self.img_dir, "terminal.png")
+            # Convert RGB to BGR for OpenCV
+            cv2.imwrite(term_img_path, last_image[:, :, ::-1])
+
+        # 2. Save Metadata JSON
+        data = {
+            "goal": goal_text,
+            "steps": step_count,
+            "total_distance_traversed": total_distance,
+            "start_position_xz": start_xz,
+            "end_position_xz": end_xz,
+            "displacement_error": geodesic_distance, # Start-to-End displacement
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        meta_path = os.path.join(self.json_dir, "terminal_summary.json")
+        with open(meta_path, "w") as f:
+            json.dump(data, f, indent=4)
+            
+        print(f"[Logger] Terminal data saved to {self.run_dir}")

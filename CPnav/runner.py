@@ -46,17 +46,23 @@ class Runner:
         self.offline_tree = OfflineGridTree(
             float(self.cfg["agent_cfg"]["grid_spacing_m"])
         )
-        self.logger = None
+        self.logger = Logger("./logs") 
+        
         self.ap = ActionProposer(self.cfg)
         self.voxel = VoxelMap(self.cfg)
         
-        # 4. Tracking Variables
+        # Tracking Variables
         self.cur_node_id = 0
         self.next_node_id = 1
-        self.goal = Logger("./logs")
+        self.goal = None # Will be string (goal text) later
         self.tried_step0_turnaround = False
         self.history = []
         self.start_xz = None
+        self.goal_xz = None
+        self.goal_image = None
+        
+        # NEW: Track total distance
+        self.traversed_distance = 0.0
 
     def initialize(self, episode_id: int = 0):
         """Starts the environment and resets internal state."""
@@ -163,57 +169,57 @@ class Runner:
 
     def execute_move(self, action, current_obs, action_score=None):
         """
-        Executes a move, updates the offline grid, and links the tree nodes.
-        Returns: new_obs
+        Executes a move, updates distance, offline grid, and links tree nodes.
         """
-        # Capture previous position from the PASSED observation (safer)
+        # 1. Capture previous position
         prev_xz = self.get_xz(current_obs)
         
-        # Execute in Sim
+        # 2. Execute in Sim
         obs = self.env.step(action)
         
-        # Link Tree Nodes
+        # 3. Calculate Forward Distance
+        curr_xz = self.get_xz(obs)
+        dist = np.linalg.norm(np.array(curr_xz) - np.array(prev_xz))
+        self.traversed_distance += dist
+        
+        # 4. Link Tree Nodes & Update Offline Grid
         new_node = self.next_node_id
         self.next_node_id += 1
         self.tree.link_parent(self.cur_node_id, new_node)
         
-        # Update Offline Grid Map
-        curr_xz = self.get_xz(obs)
         if action_score is not None:
             self.offline_tree.add_edge(prev_xz, curr_xz, action_score)
 
-        # Update Internal Pointer
         self.cur_node_id = new_node        
         return obs
 
     def execute_backtrack(self):
         """
-        Performs the backtracking logic:
-        1. Identifies the target parent node (local or global).
-        2. Teleports agent there.
-        3. Executes the next untried action from that node.
+        Backtracks to a parent node. Calculates the specific path distance required
+        to traverse the tree back to that node and adds it to total distance.
         """
         # 1. Find Target
         local = self.tree.local_backtrack(self.cur_node_id)
         if local:
             target_step, target_action_id = local
         else:
-            # Fallback to global backtrack
-            # Passing next_node_id - 1 essentially implies checking from the most recent node backwards
             res = self.tree.global_backtrack(self.next_node_id - 1)
             if not res:
                 if self.tried_step0_turnaround:
                     print("No more actions to backtrack! Exploration exhausted.")
                     return None
                 else:
-                    # try turn around action at step 0
+                    # Turnaround logic (remains mostly same, just adding distance calc)
                     target_pos = self.tree.get_node_position(0)
+                    
+                    # Calculate distance from current to root (0)
+                    backtrack_dist = self.tree.get_path_length(self.cur_node_id, 0)
+                    self.traversed_distance += backtrack_dist
+                    
                     self.cur_node_id = 0
                     obs = self.env.step(target_pos)
-
-                    print(f"Rewinding: Node {self.cur_node_id} -> Node {target_step} (Action turnaround)")
-                    self.history.append(f"{self.cur_node_id}->{target_step} turnaround")
-
+                    print(f"Rewinding: Node {self.cur_node_id} -> Node 0 (Action turnaround)")
+                    self.history.append(f"{self.cur_node_id}->0 turnaround")
                     return self.execute_move(PolarAction(0.0, np.pi), obs)
 
             target_step, target_action_id = res
@@ -221,21 +227,24 @@ class Runner:
         print(f"Rewinding: Node {self.cur_node_id} -> Node {target_step} (Action {target_action_id})")
         self.history.append(f"{self.cur_node_id}->{target_step} {target_action_id}")
 
-        # 2. Teleport
-        # We assume env.step() can take a position vector for teleportation
+        # 2. Calculate Traversal Distance for this Backtrack
+        # We use the tree to find the path length from current -> target
+        backtrack_dist = self.tree.get_path_length(self.cur_node_id, target_step)
+        self.traversed_distance += backtrack_dist
+
+        # 3. Teleport
         target_pos = self.tree.get_node_position(target_step)
         obs = self.env.step(target_pos)
         
         # Update current pointer
         self.cur_node_id = target_step
 
-        # 3. Mark Action & Execute
+        # 4. Mark Action & Execute next move
         self.tree.mark_tried(self.cur_node_id, target_action_id)
         
         action = self.tree.get_node_action(self.cur_node_id, target_action_id)
         score = self.tree.get_action_score(self.cur_node_id, target_action_id)
         
-        # Execute the move (this will create a NEW node branching off the old one)
         return self.execute_move(action, obs, score)
     
     def execute_forward(self, action_idx, obs):
@@ -283,6 +292,35 @@ class Runner:
         return self.env.step_count < int(self.cfg["env_cfg"]["max_steps"])
     
     def record_goal(self, obs):
+        """
+        Finalizes the episode: records goal state and triggers terminal logging.
+        """
         state = obs["agent_state"]
         xz = (state.position[0], state.position[2])
         self.offline_tree.add_goal(xz)
+        
+        self.goal_xz = xz
+        self.goal_image = obs["agent_state"].sensor_states["color_sensor"][:, :, :3].copy()
+        
+        # Calculate 'Geodesic' / Displacement Distance
+        # (If you have access to a navmesh geodisc function, insert it here. 
+        # Otherwise, we use Euclidean displacement as a proxy for "as the crow flies")
+        if self.start_xz and self.goal_xz:
+            displacement = np.linalg.norm(np.array(self.goal_xz) - np.array(self.start_xz))
+        else:
+            displacement = 0.0
+
+        # Trigger Logger
+        if self.logger:
+            self.logger.save_terminal_data(
+                goal_text=str(self.goal),
+                step_count=self.env.step_count if hasattr(self.env, 'step_count') else len(self.history),
+                total_distance=self.traversed_distance,
+                start_xz=self.start_xz,
+                end_xz=self.goal_xz,
+                geodesic_distance=displacement,
+                last_image=self.goal_image
+            )
+        
+        print(f"Episode Completed. Total Distance: {self.traversed_distance:.2f}m")
+

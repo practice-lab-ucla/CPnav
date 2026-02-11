@@ -284,7 +284,34 @@ class ExplorationTree:
         lca = cur
         a_to_lca = path_to_root_a[: ancestors_a[lca] + 1]  # includes lca
         lca_to_b = list(reversed(path_b_up))               # excludes lca
+
         return a_to_lca, lca_to_b
+    
+    def get_path_length(self, node_a: StepId, node_b: StepId) -> float:
+        """
+        Calculates the total Euclidean distance along the tree path from node_a to node_b.
+        Used for calculating the 'cost' of a teleport/backtrack action.
+        """
+        if node_a == node_b:
+            return 0.0
+            
+        # Get the sequence of nodes [start, ..., lca, ..., end]
+        path_a_to_lca, lca_to_b = self.path_from_a_to_b(node_a, node_b)
+        
+        # path_a_to_lca includes LCA at the end
+        # lca_to_b starts with the child of LCA
+        full_path = path_a_to_lca + lca_to_b
+        
+        total_dist = 0.0
+        for i in range(len(full_path) - 1):
+            p1 = self._node(full_path[i]).pose
+            p2 = self._node(full_path[i+1]).pose
+            
+            # Euclidean distance between consecutive nodes in the path
+            dist = math.hypot(p2.x - p1.x, p2.y - p1.y)
+            total_dist += dist
+            
+        return total_dist
 
     # --------- path -> MOVE_POLAR primitives ---------
 
