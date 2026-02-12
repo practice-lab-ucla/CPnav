@@ -1,4 +1,5 @@
 import os
+import cv2
 import yaml
 import asyncio
 import numpy as np
@@ -24,7 +25,7 @@ class AgentDecision:
     confidence_scores: Optional[List[float]]
 
 class Runner:
-    def __init__(self, cfg_path: str = "config/CPnav_5_nano.yaml"):
+    def __init__(self, cfg_path: str = "config/CPnav_5_nano.yaml", log_dir="logs/"):
         # 1. Load Config & Env
         load_dotenv(dotenv_path=".env")
         with open(cfg_path, "r") as f:
@@ -46,7 +47,7 @@ class Runner:
         self.offline_tree = OfflineGridTree(
             float(self.cfg["agent_cfg"]["grid_spacing_m"])
         )
-        self.logger = Logger("./logs") 
+        self.log_dir = log_dir
         
         self.ap = ActionProposer(self.cfg)
         self.voxel = VoxelMap(self.cfg)
@@ -60,7 +61,7 @@ class Runner:
         self.start_xz = None
         self.goal_xz = None
         self.goal_image = None
-        
+
         # NEW: Track total distance
         self.traversed_distance = 0.0
 
@@ -74,6 +75,14 @@ class Runner:
         start_position = obs["agent_state"].position
         self.start_xz = (start_position[0], start_position[2])
         self.offline_tree.initialize(obs)
+        self.logger = Logger(episode_id, self.log_dir)
+        self.logger.save_startup_data(
+            episode_id=episode_id,
+            goal=self.goal,
+            max_steps=self.cfg["env_cfg"]["max_steps"],
+            cfg=self.cfg
+        )
+
         return obs
 
     def perceive(self, obs: Dict[str, Any]):
@@ -83,12 +92,14 @@ class Runner:
         3. Generates the Voxel RGB visualization.
         """
         agent_state = obs["agent_state"]
+        target_size = tuple(self.cfg["agent_cfg"].get("query_image_resolution", (1920,1080)))
         
         # Update Voxel & Propose
         actions = self.ap.propose_actions_and_update_voxel(obs, self.voxel)
         
         # Project on Image
         sensor_state = agent_state.sensor_states["color_sensor"]
+        raw_rgb = obs["color_sensor"][:, :, :3]
         overlay_rgb = obs["color_sensor"][:, :, :3].copy()
         
         actions_on_image = project_actions_on_image(
@@ -106,17 +117,20 @@ class Runner:
             PolarAction(r, theta)
             for (r, theta), _ in sorted(actions_on_image.items(), key=lambda kv: kv[1])
         ]
-        
-        return overlay_rgb, voxel_image, sorted_actions, actions
 
-    async def decide(self, overlay_rgb, sorted_actions) -> AgentDecision:
+        raw_rgb_resized = cv2.resize(raw_rgb, target_size, interpolation=cv2.INTER_AREA)
+        overlay_rgb_resize = cv2.resize(overlay_rgb, target_size, interpolation=cv2.INTER_AREA)
+        
+        return raw_rgb_resized, overlay_rgb_resize, voxel_image, sorted_actions, actions
+
+    async def decide(self, raw_rgb, overlay_rgb, sorted_actions) -> AgentDecision:
         """
         Queries GPT to decide on stop condition and next action.
         """
         # Note: Ensure query_stop_and_action is available on self.gpt_agent 
         # or import the standalone function if it's not a method of GPTAgent.
         stop_res, action_res = await self.gpt_agent.query_stop_and_action(
-            overlay_rgb, goal=self.goal, num_actions=len(sorted_actions)
+            raw_rgb, overlay_rgb, goal=self.goal, num_actions=len(sorted_actions)
         )
         
         stop_text, stop_data, _, _ = stop_res
@@ -158,14 +172,9 @@ class Runner:
 
         # 2. Tree Record
         self._record_to_tree(obs, sorted_actions, decision.gsv, decision.confidence_scores)
-
-        # 3. Save offline tree info for debugging
-        visualize_tree(
-            self.offline_tree, 
-            os.path.join(self.logger.img_dir, f"{self.cur_node_id:04d}_offline_tree.png")
-        )
         
         # self.tree.debug_print_node(0)
+        
 
     def execute_move(self, action, current_obs, action_score=None):
         """
@@ -215,10 +224,9 @@ class Runner:
                     # Calculate distance from current to root (0)
                     backtrack_dist = self.tree.get_path_length(self.cur_node_id, 0)
                     self.traversed_distance += backtrack_dist
-                    
+                    print(f"Rewinding: Node {self.cur_node_id} -> Node 0 (Action turnaround)")
                     self.cur_node_id = 0
                     obs = self.env.step(target_pos)
-                    print(f"Rewinding: Node {self.cur_node_id} -> Node 0 (Action turnaround)")
                     self.history.append(f"{self.cur_node_id}->0 turnaround")
                     return self.execute_move(PolarAction(0.0, np.pi), obs)
 
@@ -251,7 +259,8 @@ class Runner:
         """execute action_idx at current node"""
         self.tree.mark_tried(self.cur_node_id, action_idx)
         self.history.append(f"{self.cur_node_id}->{self.cur_node_id} {action_idx}")
-        action = self.tree.get_node_ation(self.cur_node_id, action_idx)
+        print(f"Forwarding: Node {self.cur_node_id} (Action {action_idx})")
+        action = self.tree.get_node_action(self.cur_node_id, action_idx)
         score = self.tree.get_action_score(self.cur_node_id, action_idx)
         return self.execute_move(action, obs, score)
     
@@ -300,13 +309,11 @@ class Runner:
         self.offline_tree.add_goal(xz)
         
         self.goal_xz = xz
-        self.goal_image = obs["agent_state"].sensor_states["color_sensor"][:, :, :3].copy()
+        self.goal_image = obs["color_sensor"][:, :, :3].copy()
         
-        # Calculate 'Geodesic' / Displacement Distance
-        # (If you have access to a navmesh geodisc function, insert it here. 
-        # Otherwise, we use Euclidean displacement as a proxy for "as the crow flies")
+        # Calculate 'Geodesic'
         if self.start_xz and self.goal_xz:
-            displacement = np.linalg.norm(np.array(self.goal_xz) - np.array(self.start_xz))
+            displacement = self.env.start_to_goal_geodesic_distance(self.start_xz, self.goal_xz)
         else:
             displacement = 0.0
 
@@ -315,12 +322,33 @@ class Runner:
             self.logger.save_terminal_data(
                 goal_text=str(self.goal),
                 step_count=self.env.step_count if hasattr(self.env, 'step_count') else len(self.history),
-                total_distance=self.traversed_distance,
+                traversed_distance=self.traversed_distance,
                 start_xz=self.start_xz,
                 end_xz=self.goal_xz,
                 geodesic_distance=displacement,
+                history=self.history,
                 last_image=self.goal_image
+            )
+
+            visualize_tree(
+                self.offline_tree, 
+                os.path.join(self.logger.offline_dir, "offline_tree.png")
             )
         
         print(f"Episode Completed. Total Distance: {self.traversed_distance:.2f}m")
 
+
+    def record_goal_offline(self, obs):
+        """
+        Finalizes the episode: records terminal state for offline.
+        """
+        state = obs["agent_state"]
+        xz = (state.position[0], state.position[2])
+        self.offline_tree.add_goal(xz)
+    
+    def record_offline_complete(self, score, best_path):
+        self.logger.save_offline_data(score, best_path)
+        visualize_tree(
+            self.offline_tree, 
+            os.path.join(self.logger.offline_dir, "offline_tree_refined.png")
+        )

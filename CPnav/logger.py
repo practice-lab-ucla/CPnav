@@ -1,6 +1,7 @@
 import os
 import cv2
 import json
+import yaml
 from datetime import datetime
 from typing import List, Tuple, Optional
 
@@ -10,19 +11,21 @@ def quaternion_to_wxyz(rotation):
 
 
 class Logger:
-    def __init__(self, root_dir: str = "./logs"):
+    def __init__(self, episode_id, root_dir: str = "./logs"):
         ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_dir = os.path.join(root_dir, f"run_{ts}")
+        self.run_dir = os.path.join(root_dir, f"episode_{episode_id}_{ts}")
         os.makedirs(self.run_dir, exist_ok=True)
 
         self.step = 0
 
         # subfolders
-        self.img_dir = os.path.join(self.run_dir, "images")
         self.txt_dir = os.path.join(self.run_dir, "texts")
         self.json_dir = os.path.join(self.run_dir, "meta")
+        self.img_dir = os.path.join(self.run_dir, "images")
+        self.offline_dir = os.path.join(self.run_dir, "offline")
+        self.terminal_dir = os.path.join(self.run_dir, "terminal")
 
-        for d in [self.img_dir, self.txt_dir, self.json_dir]:
+        for d in [self.img_dir, self.txt_dir, self.json_dir, self.terminal_dir, self.offline_dir]:
             os.makedirs(d, exist_ok=True)
 
     def log_step(
@@ -79,10 +82,11 @@ class Logger:
         self,
         goal_text: str,
         step_count: int,
-        total_distance: float,
+        traversed_distance: float,
         start_xz: Tuple[float, float],
         end_xz: Tuple[float, float],
         geodesic_distance: float,
+        history: List[str],
         last_image
     ):
         """
@@ -90,23 +94,58 @@ class Logger:
         """
         # 1. Save Terminal Image
         if last_image is not None:
-            term_img_path = os.path.join(self.img_dir, "terminal.png")
+            term_img_path = os.path.join(self.terminal_dir, f"{goal_text}.png")
             # Convert RGB to BGR for OpenCV
             cv2.imwrite(term_img_path, last_image[:, :, ::-1])
 
         # 2. Save Metadata JSON
         data = {
             "goal": goal_text,
-            "steps": step_count,
-            "total_distance_traversed": total_distance,
-            "start_position_xz": start_xz,
-            "end_position_xz": end_xz,
-            "displacement_error": geodesic_distance, # Start-to-End displacement
-            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            "step_count": int(step_count),
+            "total_distance_traversed": float(traversed_distance),
+            "start_position_xz": [float(start_xz[0]), float(start_xz[1])],
+            "end_position_xz": [float(end_xz[0]), float(end_xz[1])],
+            "geodesic_distance": float(geodesic_distance),
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "history": [str(h) for h in history],
         }
 
-        meta_path = os.path.join(self.json_dir, "terminal_summary.json")
+        meta_path = os.path.join(self.terminal_dir, "terminal_summary.json")
         with open(meta_path, "w") as f:
             json.dump(data, f, indent=4)
-            
-        print(f"[Logger] Terminal data saved to {self.run_dir}")
+
+    def save_offline_data(
+        self,
+        score: float,
+        best_path: List[Tuple[int]]
+    ):
+        """
+        Saves final episode metadata and the terminal image.
+        """
+
+        data = {
+            "score": score,
+            "best_path": best_path,
+        }
+
+        meta_path = os.path.join(self.offline_dir, "offline_summary.json")
+        with open(meta_path, "w") as f:
+            json.dump(data, f, indent=4)
+    
+    def save_startup_data(
+        self, 
+        episode_id: int,
+        goal: str,
+        max_steps: int,
+        cfg
+    ):
+        data = {
+            "episode_id": episode_id,
+            "goal": goal,
+            "max_steps": max_steps
+        }
+        meta_path = os.path.join(self.run_dir, "startup_summary.json")
+        with open(meta_path, "w") as f:
+            json.dump(data, f, indent=4)
+        with open(os.path.join(self.run_dir, "config.yaml"), "w") as f:
+            yaml.safe_dump(cfg, f, sort_keys=False)

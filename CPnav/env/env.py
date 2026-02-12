@@ -1,7 +1,8 @@
+import os
 import gzip
 import json
 import logging
-import os
+import habitat_sim
 import numpy as np
 from pathlib import Path
 from typing import Union, Dict, Any, Tuple
@@ -187,3 +188,20 @@ class ObjectNavEnv:
     def close(self):
         if self.simWrapper:
             self.simWrapper.close()
+
+    def start_to_goal_geodesic_distance(self, start_xz: Tuple[float], end_xz: Tuple[float]):
+        pf = self.simWrapper.sim.pathfinder
+
+        # --- Compute full shortest path from start → current ---
+        shortest_path = habitat_sim.ShortestPath()
+        shortest_path.requested_start = np.array([start_xz[0], 0, start_xz[1]])
+        shortest_path.requested_end = np.array([end_xz[0], 0, end_xz[1]])
+
+        found = pf.find_path(shortest_path)
+
+        if found:
+            dist_start_to_curr = float(shortest_path.geodesic_distance)
+        else:
+            dist_start_to_curr = float('inf')
+
+        return dist_start_to_curr

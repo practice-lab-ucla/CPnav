@@ -1,9 +1,6 @@
-import os
 import asyncio
-import numpy as np
-
+import argparse
 from CPnav.runner import Runner
-from CPnav.env import PolarAction
 
 
 async def run_offline_search(runner: Runner):
@@ -46,18 +43,18 @@ async def run_offline_search(runner: Runner):
         
         # Mark as tried immediately so we don't pick it again
         runner.tree.mark_tried(step_id, action_id)
+        print(f"Expanding: Node {step_id} Action {action_id}")
 
         obs = runner.execute_move(action_primitive, obs, score)
 
         # 4. Branch Exploration: Hand off to the local loop
         #    This runs until the agent backtracks, finishes, or runs out of steps.
         obs, score_threshold = await explore_branch(runner, obs)
-        
-        # if runner.is_mission_complete():
-        #     return runner.get_result()
 
     # Budget exhausted or graph fully explored
-    return runner.offline_tree.get_best_path_by_score()[0]
+    score, best_path = runner.offline_tree.get_best_path_by_score()
+    runner.record_offline_complete(score, best_path)
+    return score
 
 
 async def explore_branch(runner: Runner, obs):
@@ -67,17 +64,17 @@ async def explore_branch(runner: Runner, obs):
     """
     while runner.has_steps():
         # A. Perceive
-        overlay, voxel_img, sorted_actions, actions = runner.perceive(obs)
+        raw, overlay, voxel_img, sorted_actions, actions = runner.perceive(obs)
 
         # B. Decide
-        decision = await runner.decide(overlay, sorted_actions)
+        decision = await runner.decide(raw, overlay, sorted_actions)
 
         # C. Log
         runner.log_and_record(obs, decision, overlay, voxel_img, actions, sorted_actions)
         
         # D. Handle High-Level Outcomes
         if decision.done:
-            runner.record_goal(obs)
+            runner.record_goal_offline(obs)
             break
         
         if (decision.action_idx == 0) or (len(sorted_actions) == 0):
@@ -86,36 +83,69 @@ async def explore_branch(runner: Runner, obs):
             break
 
         # E. Act (Move Forward)
-
         idx = int(max(1, min(decision.action_idx, len(sorted_actions))))
         obs = runner.execute_forward(idx, obs)
 
         # F. Check Early Exit: Have we stumbled into an area we already mapped?
         pos = obs["agent_state"].position
         if runner.offline_tree.grid_explored((pos[0], pos[2])):
-            print("Branch merged into explored territory. Stopping branch.")
             break
     
     return obs, runner.offline_tree.get_best_path_by_score()[0]
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Run CPNav online + offline search")
+
+    parser.add_argument(
+        "--config",
+        type=str,
+        default="config/CPnav_4o_mini.yaml",
+        help="Path to config YAML file",
+    )
+
+    parser.add_argument(
+        "--log_dir",
+        type=str,
+        default="logs/",
+        help="Directory to save logs",
+    )
+
+    parser.add_argument(
+        "--episode",
+        type=int,
+        default=100,
+        help="Episode ID to initialize",
+    )
+
+    return parser.parse_args()
+
+
 async def main():
-    runner = Runner("config/CPnav_4o_mini.yaml")
-    obs = runner.initialize(100)
+    args = parse_args()
+
+    runner = Runner(args.config, log_dir=args.log_dir)
+    obs = runner.initialize(args.episode)
+
+    print("===== RUN CONFIG =====")
+    print("Config:", args.config)
+    print("Log Path:", args.log_dir)
+    print("Episode:", args.episode)
+    print("======================")
 
     while runner.has_steps():
         # 1. Perceive
-        overlay, voxel_img, sorted_actions, actions = runner.perceive(obs)
+        raw, overlay, voxel_img, sorted_actions, actions = runner.perceive(obs)
 
         # 2. Decide
-        decision = await runner.decide(overlay, sorted_actions)
+        decision = await runner.decide(raw, overlay, sorted_actions)
         
         # 3. Log
         runner.log_and_record(obs, decision, overlay, voxel_img, actions, sorted_actions)
 
         # 4. Handle "Done" Logic, do not record goal node
         if decision.done:
-            print("Done condition met. Running post-process...")
+            print("Found goal online")
             runner.record_goal(obs)
             print("score is", await run_offline_search(runner))
             return

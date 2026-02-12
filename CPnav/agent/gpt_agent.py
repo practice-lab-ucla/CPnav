@@ -47,7 +47,7 @@ class GPTAgent:
 
     def _build_request(
         self,
-        overlay_rgb: np.ndarray,
+        rgb: np.ndarray,
         goal: str,
         prompt_type: str,
         num_actions: int,
@@ -60,7 +60,7 @@ class GPTAgent:
         """
         prompt_text = self._construct_prompt(goal, prompt_type, num_actions)
 
-        base64_png = self._encode_rgb_np_to_base64_png(overlay_rgb)
+        base64_png = self._encode_rgb_np_to_base64_png(rgb)
         image_url = f"data:image/png;base64,{base64_png}"
 
         prompt_msg = {
@@ -89,8 +89,8 @@ class GPTAgent:
                         {
                             "type": "input_image",
                             "image_meta": {
-                                "shape": list(overlay_rgb.shape),
-                                "dtype": str(overlay_rgb.dtype),
+                                "shape": list(rgb.shape),
+                                "dtype": str(rgb.dtype),
                                 "base64_sha256": self._sha256_str(base64_png),
                             },
                         },
@@ -103,7 +103,7 @@ class GPTAgent:
 
     async def ask_gpt_async(
         self,
-        overlay_rgb: np.ndarray,
+        rgb: np.ndarray,
         goal: str,
         prompt_type: str,
         num_actions: int,
@@ -117,7 +117,7 @@ class GPTAgent:
           prompt_text: the exact prompt text
         """
         prompt_text, payload, payload_log = self._build_request(
-            overlay_rgb=overlay_rgb,
+            rgb=rgb,
             goal=goal,
             prompt_type=prompt_type,
             num_actions=num_actions,
@@ -235,13 +235,14 @@ class GPTAgent:
     
     async def query_stop_and_action(
         self,
+        obs_rgb,
         overlay_rgb,
         goal: str,
         num_actions: int,
         timeout_s: Optional[float] = None,
     ) -> Tuple[StopResult, ActionResult]:
         stop_coroutine = self.ask_gpt_async(
-            overlay_rgb=overlay_rgb,
+            rgb=obs_rgb,
             goal=goal,
             prompt_type="stopping",
             num_actions=0,               # ignored for stopping in your code
@@ -249,7 +250,7 @@ class GPTAgent:
         )
 
         action_coroutine = self.ask_gpt_async(
-            overlay_rgb=overlay_rgb,
+            rgb=overlay_rgb,
             goal=goal,
             prompt_type="action",
             num_actions=num_actions,
