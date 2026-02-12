@@ -14,7 +14,7 @@ env_cfg:
   
   # Episode Control
   num_episodes: 1
-  max_steps: 200
+  max_steps: 20
   success_threshold: 0.3
   d_goal: 2.0
   

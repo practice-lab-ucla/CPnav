@@ -114,6 +114,32 @@ class Logger:
         with open(meta_path, "w") as f:
             json.dump(data, f, indent=4)
 
+    def save_failed_terminal_data(
+        self,
+        goal_text: str,
+        step_count: int,
+        traversed_distance: float,
+        start_xz: Tuple[float, float],
+        history: List[str],
+    ):
+        """
+        Saves final episode metadata and the terminal image.
+        """
+
+        # 2. Save Metadata JSON
+        data = {
+            "goal": goal_text,
+            "step_count": int(step_count),
+            "total_distance_traversed": float(traversed_distance),
+            "start_position_xz": [float(start_xz[0]), float(start_xz[1])],
+            "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "history": [str(h) for h in history],
+        }
+
+        meta_path = os.path.join(self.terminal_dir, "failure_summary.json")
+        with open(meta_path, "w") as f:
+            json.dump(data, f, indent=4)
+
     def save_offline_data(
         self,
         score: float,

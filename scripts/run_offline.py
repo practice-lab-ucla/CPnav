@@ -153,10 +153,10 @@ async def main():
         # 5. Act
         if decision.action_idx is None:
             print("Warnning GPT does not give correct action")
-        if (decision.action_idx == 0) or (len(sorted_actions) == 0) or (decision.action_idx is None):
+        if (decision.action_idx == 0) and (runner.cur_node_id == 0):
             # Special Start
             obs = runner.execute_turnaround(obs)
-        elif (decision.action_idx == 0) or (len(sorted_actions) == 0):
+        elif (decision.action_idx == 0) or (len(sorted_actions) == 0) or (decision.action_idx is None):
             # Backtrack
             obs = runner.execute_backtrack()
             if obs is None: break
@@ -164,6 +164,8 @@ async def main():
             # Normal Move
             idx = int(max(1, min(decision.action_idx, len(sorted_actions))))
             obs = runner.execute_forward(idx, obs)
+    
+    runner.record_failure(obs)
 
 if __name__ == "__main__":
     asyncio.run(main())

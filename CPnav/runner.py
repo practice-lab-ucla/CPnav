@@ -267,6 +267,7 @@ class Runner:
     def execute_turnaround(self, obs):
         self.tried_step0_turnaround = True
         self.history.append(f"{self.cur_node_id}->{self.cur_node_id} turnaround")
+        print(f"Rewinding: Node {self.cur_node_id} -> Node 0 (Action turnaround)")
         return self.execute_move(PolarAction(0, np.pi), obs)
 
     def _record_to_tree(self, obs, sorted_actions, gsv, scores):
@@ -352,3 +353,21 @@ class Runner:
             self.offline_tree, 
             os.path.join(self.logger.offline_dir, "offline_tree_refined.png")
         )
+    
+    def record_failure(self, obs):
+        """
+        Finalizes the episode: records goal state and triggers terminal logging.
+        """
+
+        # Trigger Logger
+        if self.logger:
+            self.logger.save_failed_terminal_data(
+                goal_text=str(self.goal),
+                step_count=self.env.step_count if hasattr(self.env, 'step_count') else len(self.history),
+                traversed_distance=self.traversed_distance,
+                start_xz=self.start_xz,
+                history=self.history,
+            )
+        
+        print(f"Episode Failed. Total Distance: {self.traversed_distance:.2f}m")
+        
