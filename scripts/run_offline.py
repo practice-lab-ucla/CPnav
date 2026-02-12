@@ -77,7 +77,7 @@ async def explore_branch(runner: Runner, obs):
             runner.record_goal_offline(obs)
             break
         
-        if (decision.action_idx == 0) or (len(sorted_actions) == 0):
+        if (decision.action_idx == 0) or (len(sorted_actions) == 0) or (decision.action_idx is None):
             # "Backtrack" / Turn-around means this branch is dead.
             # We return to the main loop to pick a NEW global frontier.
             break
@@ -151,7 +151,9 @@ async def main():
             return
 
         # 5. Act
-        if (decision.action_idx == 0) and (runner.cur_node_id == 0):
+        if decision.action_idx is None:
+            print("Warnning GPT does not give correct action")
+        if (decision.action_idx == 0) or (len(sorted_actions) == 0) or (decision.action_idx is None):
             # Special Start
             obs = runner.execute_turnaround(obs)
         elif (decision.action_idx == 0) or (len(sorted_actions) == 0):

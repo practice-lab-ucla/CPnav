@@ -92,6 +92,8 @@ agent_cfg:
   hard_spacing: 0.349066
   num_theta: 60
 
+  query_image_resolution: [640, 360]
+
   # ============================================================================
   # Action Proposer (Ray Casting & Detailed Navigation)
   # ============================================================================
