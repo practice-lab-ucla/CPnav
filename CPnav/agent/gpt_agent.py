@@ -260,21 +260,32 @@ class GPTAgent:
         # Run both concurrently
         stop_res, action_res = await asyncio.gather(stop_coroutine, action_coroutine)
         return stop_res, action_res
-        
+
+
+def clean_json_string(json_str: str) -> str:
+    """
+    Removes C-style comments (// and /* */) from a JSON-like string.
+    """
+    # Remove single line comments // ...
+    json_str = re.sub(r"//.*", "", json_str)
+    # Remove multi-line comments /* ... */
+    json_str = re.sub(r"/\*[\s\S]*?\*/", "", json_str)
+    return json_str.strip()
 
 def eval_vlm_response(response: str) -> dict:
-    """
-    Converts the VLM response string into a dictionary, if possible.
-    (This matches Agent._eval_response in agent-2.py)
-    """
     try:
-        eval_resp = ast.literal_eval(response[response.rindex("{"): response.rindex("}") + 1])
-        if isinstance(eval_resp, dict):
-            return eval_resp
-        else:
-            raise ValueError
-    except (ValueError, SyntaxError):
-        logging.error(f"Error parsing response {response}")
+        # 1. Extract the JSON block
+        start = response.rindex("{")
+        end = response.rindex("}") + 1
+        json_block = response[start:end]
+        
+        # 2. Clean comments
+        clean_block = clean_json_string(json_block)
+        
+        # 3. Use json.loads (standard for JSON)
+        return json.loads(clean_block)
+    except (ValueError, json.JSONDecodeError, IndexError) as e:
+        logging.error(f"Error parsing response: {e}")
         return {}
 
 def eval_vlm_response_stopping(response: str) -> dict:
