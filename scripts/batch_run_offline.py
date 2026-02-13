@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- Configuration ---
 SCRIPT = "scripts/run_offline.py"
-CONFIG = "config/CPnav_5_nano.yaml"
+CONFIG = "config/CPnav_4o_mini.yaml"
 MAX_JOBS = 15
 SEED = 42
 N_EXPERIMENTS = 100
@@ -59,4 +59,14 @@ def run_experiments():
     print("\nAll experiments completed.")
 
 if __name__ == "__main__":
-    run_experiments()
+    start_time = time.time()
+    try:
+        run_experiments()
+    except KeyboardInterrupt:
+        print("\nReceived KeyboardInterrupt — stopping early.")
+    finally:
+        elapsed = time.time() - start_time
+        hours = int(elapsed // 3600)
+        minutes = int((elapsed % 3600) // 60)
+        seconds = int(elapsed % 60)
+        print(f"Total time elapsed: {hours}h {minutes}m {seconds}s")
