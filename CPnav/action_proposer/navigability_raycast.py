@@ -227,12 +227,12 @@ class DepthNavigabilityRaycaster:
                         break
 
             # B. Lookahead Check (Noise reduction)
-            # If 2 or fewer of the next 4 pixels are navigable, stop.
-            lookahead_slice = [
-                navigability_mask[y_coords[j], x_coords[j]] 
-                for j in range(i, i + 4)
-            ]
-            if sum(lookahead_slice) <= 2:
+            # Slice the next 4 pixels (or fewer if near the end of the line)
+            end_idx = min(i + 4, num_points)
+            lookahead_slice = navigability_mask[y_coords[i:end_idx], x_coords[i:end_idx]]
+
+            # If we are at the end or most of the next pixels are non-navigable, stop.
+            if len(lookahead_slice) > 0 and np.sum(lookahead_slice) <= (len(lookahead_slice) // 2):
                 collision_found = True
                 break
 
