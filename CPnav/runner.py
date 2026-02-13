@@ -224,11 +224,8 @@ class Runner:
                     # Calculate distance from current to root (0)
                     backtrack_dist = self.tree.get_path_length(self.cur_node_id, 0)
                     self.traversed_distance += backtrack_dist
-                    print(f"Rewinding: Node {self.cur_node_id} -> Node 0 (Action turnaround)")
-                    self.cur_node_id = 0
                     obs = self.env.step(target_pos)
-                    self.history.append(f"{self.cur_node_id}->0 turnaround")
-                    return self.execute_move(PolarAction(0.0, np.pi), obs)
+                    return self.execute_turnaround(obs)
 
             target_step, target_action_id = res
 
@@ -266,7 +263,7 @@ class Runner:
     
     def execute_turnaround(self, obs):
         self.tried_step0_turnaround = True
-        self.history.append(f"{self.cur_node_id}->{self.cur_node_id} turnaround")
+        self.history.append(f"{self.cur_node_id}->0 turnaround")
         print(f"Rewinding: Node {self.cur_node_id} -> Node 0 (Action turnaround)")
         return self.execute_move(PolarAction(0, np.pi), obs)
 
