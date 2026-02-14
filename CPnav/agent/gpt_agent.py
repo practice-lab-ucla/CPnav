@@ -54,52 +54,78 @@ class GPTAgent:
     ) -> Tuple[str, Dict[str, Any], Dict[str, Any]]:
         """
         Returns:
-          prompt_text: the exact input_text sent
-          payload: full Responses API request (includes base64 image_url)
-          payload_log: sanitized payload for logging (no base64)
+        prompt_text: the exact user input_text sent (string)
+        payload: full Responses API request (includes base64 image_url)
+        payload_log: sanitized payload for logging (no base64)
         """
-        prompt_text = self._construct_prompt(goal, prompt_type, num_actions)
+        # _construct_prompt now returns (system_prompt_or_None, user_prompt)
+        system_prompt, user_prompt = self._construct_prompt(goal, prompt_type, num_actions)
 
         base64_png = self._encode_rgb_np_to_base64_png(rgb)
         image_url = f"data:image/png;base64,{base64_png}"
 
+        # Build the list of messages to send
+        input_messages = []
+
+        if system_prompt is not None:
+            system_msg = {
+                "role": "system",
+                "content": [
+                    {"type": "input_text", "text": system_prompt}
+                ],
+            }
+            input_messages.append(system_msg)
+
+        # user message always present
         prompt_msg = {
             "role": "user",
             "content": [
-                {"type": "input_text", "text": prompt_text},
+                {"type": "input_text", "text": user_prompt},
                 {"type": "input_image", "image_url": image_url},
             ],
         }
+        input_messages.append(prompt_msg)
 
         payload = {
             "model": self.model,
-            "input": [prompt_msg],
+            "input": input_messages,
             "store": self.store,
         }
 
         # Sanitized log (don’t store base64)
+        payload_log_input = []
+
+        if system_prompt is not None:
+            payload_log_input.append({
+                "role": "system",
+                "content": [
+                    {"type": "input_text", "text": system_prompt}
+                ]
+            })
+
+        payload_log_input.append({
+            "role": "user",
+            "content": [
+                {"type": "input_text", "text": user_prompt},
+                {
+                    "type": "input_image",
+                    "image_meta": {
+                        "shape": list(rgb.shape),
+                        "dtype": str(rgb.dtype),
+                        "base64_sha256": self._sha256_str(base64_png),
+                    },
+                },
+            ],
+        })
+
         payload_log = {
             "model": self.model,
             "store": self.store,
-            "input": [
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "input_text", "text": prompt_text},
-                        {
-                            "type": "input_image",
-                            "image_meta": {
-                                "shape": list(rgb.shape),
-                                "dtype": str(rgb.dtype),
-                                "base64_sha256": self._sha256_str(base64_png),
-                            },
-                        },
-                    ],
-                }
-            ],
+            "input": payload_log_input,
         }
 
-        return prompt_text, payload, payload_log
+        # Return the user prompt text (so existing code that expects prompt_text keeps working)
+        return user_prompt, payload, payload_log
 
     async def ask_gpt_async(
         self,
@@ -165,6 +191,13 @@ class GPTAgent:
 
     @staticmethod
     def _construct_prompt(goal: str, prompt_type: str, num_actions: int=0):
+
+        system_prompt = (
+            "You are an embodied robotic assistant, with an RGB image sensor. You observe the image and instructions "
+            "given to you and output a textual response, which is converted into actions that physically move you "
+        )
+
+
         if prompt_type == 'stopping':
             stopping_prompt = (
                 f"The agent has been tasked with navigating to a {goal.upper()}. The agent has sent you an image from its current location."
@@ -195,7 +228,7 @@ class GPTAgent:
                 f"After Step 3, immediately output this JSON line:"
                 f"{{\"global_semantic_score\": <float 0.0 to 1.0>}}"
             )
-            return stopping_prompt
+            return None, stopping_prompt
         if prompt_type == 'action':
             action_prompt = (
                 f"TASK: NAVIGATE TO THE NEAREST {goal.upper()}, and get as close to it as possible. "
@@ -208,14 +241,13 @@ class GPTAgent:
                 f"Second, tell me which general direction you should go in. "
                 f"Lastly, explain which action achieves that best and return it as JSON in the format: "
                 f"{{'action': <action_key>, 'score': <confidence_score>, 'confidence_score': [<score_0>, <score_1>, ..., <score_n>]}}. "
-                f"The 'confidence_score' list represents probabilities for each action "
-                f"'action' must be an integer not a string and an independent confidence value in [0, 1]  "
+                f"The 'confidence_score' list gives, for each action, the model's estimated probability that selecting that action will best advance the agent toward the goal (one value per action, in [0,1]). "
                 f"Do NOT normalize or force the scores to sum to 1. "
                 f"You must generate exactly {num_actions+1} confidence scores, one for each action shown. "
                 f"{'If Action 0 (rewind) is available, its confidence score must appear first in the list, followed by Action 1, Action 2, etc.' if True else 'The scores should be listed in order: Action 1, Action 2, Action 3, and so on.'}"
 
             )
-            return action_prompt
+            return system_prompt, action_prompt 
 
     @staticmethod
     def normalize_scores(confidence_scores):
