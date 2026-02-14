@@ -274,7 +274,7 @@ def project_actions_on_image(
         cv2.putText(rgb_image, bubble_text, text_pos, font, text_size, BLACK, text_thickness)
 
         # Draw Label "TURN AROUND" underneath
-        label_scale = 1.0 * scale_factor
+        label_scale = 2 * scale_factor
         label_thick = math.ceil(2 * scale_factor)
         cv2.putText(
             rgb_image,
