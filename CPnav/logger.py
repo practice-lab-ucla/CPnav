@@ -67,7 +67,7 @@ class Logger:
             "global_semantic_score": global_semantic_score,
             "chosen_action_index": action_idx,
             "actions": [
-                {"index": i, "r": float(r), "theta": float(theta)}
+                {"index": i+1, "r": float(r), "theta": float(theta)}
                 for i, (r, theta) in enumerate(actions)
             ],
             "confidence_scores": confidence_scores,

@@ -6,7 +6,7 @@ from datetime import datetime
 
 # --- Configuration ---
 SCRIPT = "scripts/run_offline.py"
-CONFIG = "config/CPnav_4o_mini.yaml"
+CONFIG = "config/CPnav_5_nano.yaml"
 MAX_JOBS = 15
 SEED = 42
 N_EXPERIMENTS = 100

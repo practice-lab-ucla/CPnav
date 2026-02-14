@@ -248,22 +248,6 @@ class GPTAgent:
 
             )
             return system_prompt, action_prompt 
-
-    @staticmethod
-    def normalize_scores(confidence_scores):
-        """
-        Normalizes a list of confidence scores to ensure they sum exactly to 1.
-        """
-        total = sum(confidence_scores)
-        
-        if total == 0:
-            return [1.0 / len(confidence_scores)] * len(confidence_scores)
-        
-        # Normalize scores
-        normalized_scores = [s / total for s in confidence_scores]
-        normalized_scores = [round(n, 3) for n in normalized_scores]  # round to # ofdecimal places to avoid long numbers
-
-        return normalized_scores
     
     async def query_stop_and_action(
         self,

@@ -146,12 +146,13 @@ class Runner:
         )
 
     def log_and_record(self, 
-                       obs, 
-                       decision: AgentDecision, 
-                       overlay_rgb, 
-                       voxel_rgb, 
-                       actions, 
-                       sorted_actions):
+        obs, 
+        decision: AgentDecision, 
+        overlay_rgb, 
+        voxel_rgb, 
+        actions, 
+        sorted_actions
+    ):
         """
         Logs the step to disk and records the node in the ExplorationTree.
         """
@@ -209,6 +210,7 @@ class Runner:
         """
         # 1. Find Target
         local = self.tree.local_backtrack(self.cur_node_id)
+        self.tree.mark_tried(self.cur_node_id, 0)
         if local:
             target_step, target_action_id = local
         else:
@@ -218,8 +220,7 @@ class Runner:
                     print("No more actions to backtrack! Exploration exhausted.")
                     return None
                 else:
-                    # Turnaround logic (remains mostly same, just adding distance calc)
-                    target_pos = self.tree.get_node_position(0)
+                    target_pos = self.tree.get_node_position(0)  # execute the special turnaround action at 0
                     
                     # Calculate distance from current to root (0)
                     backtrack_dist = self.tree.get_path_length(self.cur_node_id, 0)

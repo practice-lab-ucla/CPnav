@@ -157,20 +157,22 @@ class ExplorationTree:
         gsv: Optional[float] = None,
         scores: Optional[float] = None,
         *,
-        initialize_unexplored: bool = True,
-        exclude_action0: bool = True,
+        exclude_action0: bool = False,
     ) -> None:
         """
         Add or overwrite a node.
         """
         actions = actions or []
-        data = NodeData(step=step_id, pose=pose, actions=actions, gsv=gsv)
 
-        if initialize_unexplored:
-            idxs = [a.index for a in actions]
-            if exclude_action0:
-                idxs = [i for i in idxs if i != 0]
-            data.unexplored = set(idxs)
+        if (not exclude_action0):
+            # add action zero
+            action_turnaround = ActionProposal(index=0, r=0, theta=0)
+            actions.insert(0, action_turnaround)
+
+        idxs = [a.index for a in actions]
+
+        data = NodeData(step=step_id, pose=pose, actions=actions, gsv=gsv)
+        data.unexplored = set(idxs)
 
         self.G.add_node(step_id, data=data)
         
@@ -210,7 +212,7 @@ class ExplorationTree:
         node = self._node(step_id)
 
         # action_id is 1..N; list index is 0..N-1
-        idx = int(action_id) - 1
+        idx = int(action_id)
         if idx < 0 or idx >= len(node.actions):
             raise IndexError(
                 f"get_action_score: step={step_id} action_id={action_id} "
@@ -383,7 +385,7 @@ class ExplorationTree:
 
     # --------- Priority Queue Logic ---------
 
-    def get_best_global_action(self) -> Optional[Tuple[StepId, ActionId]]:
+    def get_best_global_action(self, exclude_action0=True) -> Optional[Tuple[StepId, ActionId]]:
         """
         Pops the highest priority action from the Global Priority Queue.
         Checks validity (lazy deletion) against the 'unexplored' set.
@@ -399,6 +401,9 @@ class ExplorationTree:
             # Verify node still exists
             if step_id not in self.G:
                 continue
+
+            if exclude_action0 and (action_id == 0):
+                continue
             
             node = self._node(step_id)
 
@@ -408,7 +413,7 @@ class ExplorationTree:
                 
         return None
 
-    def fill_in_scores(self, step_id: StepId, gsv: float, action_scores: List[float]) -> None:
+    def fill_in_scores(self, step_id: StepId, gsv: float, action_scores: List[float], normalize_actions=True) -> None:
         """
         Fills per-action score, adjusted = score * gsv, AND pushes to Global PQ.
         """
@@ -418,36 +423,25 @@ class ExplorationTree:
         N = len(node.actions)
         M = len(action_scores)
 
-        # --- sanitize scores (float + finite) ---
+        # --- decide whether GPT generated the correct action ---
+        valid_fill = M == N
         scores = []
-        for s in action_scores:
-            try:
-                v = float(s)
-            except Exception:
-                v = 0.0
-            if not math.isfinite(v):
-                v = 0.0
-            scores.append(v)
-
-        # --- decide whether action 0 is present ---
-        if M == N + 1:
-            has_action0 = True
-        elif M == N:
-            has_action0 = False
-        else:
-            has_action0 = (M > N)
-
-        # We assume scores map 1-to-1 to actions array (handling indices appropriately)
-        # Simplify logic: just map first N available scores to the N stored actions
-        scores_1_to_N = scores[:N]
-
-        # --- pad or clip to exactly N ---
-        if len(scores_1_to_N) < N:
-            scores_1_to_N = scores_1_to_N + [0.0] * (N - len(scores_1_to_N))
         
-        # --- assign and push to PQ ---
+        if valid_fill:
+            for s in action_scores:
+                try:
+                    v = float(s)
+                except Exception:
+                    v = 0.0
+                if not math.isfinite(v):
+                    v = 0.0
+                scores.append(v)
+        else:
+            # if not, fill the score as 1/N
+            scores = [1/N for _ in range(N)]
+
         for i, a in enumerate(node.actions):
-            s = scores_1_to_N[i]
+            s = scores[i]
             a.score = s
             a.adjusted = s * node.gsv
             
@@ -471,12 +465,12 @@ class ExplorationTree:
             proposals.append(ActionProposal(index=i+1, r=float(a.r), theta=float(a.theta)))
         return proposals
 
-    def local_backtrack(
+    def local_backtrack_once(
         self,
         step_id: StepId,
         *,
         score_threshold: float = 0.0,
-        exclude_action0: bool = True,
+        exclude_action0: bool = False,
         score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,) -> Optional[Tuple[int, int]]:
         """
         Local backtrack: go to parent, pick best child.
@@ -494,6 +488,51 @@ class ExplorationTree:
             return None
 
         return parent, next_action
+
+    def local_backtrack(
+        self,
+        step_id: StepId,
+        *,
+        score_threshold: float = 0.0,
+        exclude_action0: bool = False,
+        score_fn: Optional[Callable[[NodeData, ActionProposal], float]] = None,
+    ) -> Optional[Tuple[int, int]]:
+        
+        # We start by looking at the parent of the current step
+        current_step = step_id
+        
+        while True:
+            result = self.local_backtrack_once(
+                current_step, 
+                score_threshold=score_threshold, 
+                exclude_action0=exclude_action0, 
+                score_fn=score_fn
+            )
+            
+            if result is None:
+                # We can't go higher, or the parent is empty. 
+                # Let's try to find the best action AT the current node instead.
+                # We MUST exclude_action0 here, otherwise we might loop infinitely.
+                fallback_action = self.select_next_action_at(
+                    current_step, 
+                    score_threshold=score_threshold, 
+                    exclude_action0=True, # Force True to ensure we progress
+                    score_fn=score_fn
+                )
+                
+                if fallback_action is None:
+                    return None
+                
+                # Return the current node and the best action found there
+                return current_step, fallback_action
+            
+            parent, next_action = result
+            
+            if (not exclude_action0) and (next_action == 0):
+                current_step = parent
+                continue
+                
+            return parent, next_action
     
     def global_backtrack(
         self,
@@ -583,7 +622,7 @@ class ExplorationTree:
 
     def get_node_action(self, step_id: StepId, action_id: ActionId):
         node = self._node(step_id)
-        idx = int(action_id) - 1
+        idx = int(action_id)
         if idx < 0 or idx >= len(node.actions):
             raise IndexError(f"get_node_action invalid index: {idx}")
         a = node.actions[idx]

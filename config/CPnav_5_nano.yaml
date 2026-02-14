@@ -44,7 +44,7 @@ sim_cfg:
   sensor_cfg:
     height: 0.9
     pitch: -0.45
-    fov: 101
+    fov: 131
     resolution: [1080, 1920]
     res_factor: 1
 
