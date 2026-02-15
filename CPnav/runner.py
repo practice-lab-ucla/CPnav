@@ -25,7 +25,7 @@ class AgentDecision:
     confidence_scores: Optional[List[float]]
 
 class Runner:
-    def __init__(self, cfg_path: str = "config/CPnav_5_nano.yaml", log_dir="logs/"):
+    def __init__(self, cfg_path: str = "config/CPnav_5_nano.yaml", log_dir="logs/", threshold=0):
         # 1. Load Config & Env
         load_dotenv(dotenv_path=".env")
         with open(cfg_path, "r") as f:
@@ -51,6 +51,7 @@ class Runner:
         
         self.ap = ActionProposer(self.cfg)
         self.voxel = VoxelMap(self.cfg)
+        self.threshold = threshold
         
         # Tracking Variables
         self.cur_node_id = 0
@@ -209,12 +210,12 @@ class Runner:
         to traverse the tree back to that node and adds it to total distance.
         """
         # 1. Find Target
-        local = self.tree.local_backtrack(self.cur_node_id)
+        local = self.tree.local_backtrack(self.cur_node_id, score_threshold=self.threshold)
         self.tree.mark_tried(self.cur_node_id, 0)
         if local:
             target_step, target_action_id = local
         else:
-            res = self.tree.global_backtrack(self.next_node_id - 1)
+            res = self.tree.global_backtrack(self.next_node_id - 1, score_threshold=self.threshold)
             if not res:
                 if self.tried_step0_turnaround:
                     print("No more actions to backtrack! Exploration exhausted.")
@@ -326,7 +327,8 @@ class Runner:
                 end_xz=self.goal_xz,
                 geodesic_distance=displacement,
                 history=self.history,
-                last_image=self.goal_image
+                last_image=self.goal_image,
+                threshold=self.threshold
             )
 
             visualize_tree(
@@ -365,6 +367,7 @@ class Runner:
                 traversed_distance=self.traversed_distance,
                 start_xz=self.start_xz,
                 history=self.history,
+                threshold=self.threshold
             )
         
         print(f"Episode Failed. Total Distance: {self.traversed_distance:.2f}m")

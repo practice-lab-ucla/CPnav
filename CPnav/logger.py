@@ -87,7 +87,8 @@ class Logger:
         end_xz: Tuple[float, float],
         geodesic_distance: float,
         history: List[str],
-        last_image
+        last_image,
+        threshold: float
     ):
         """
         Saves final episode metadata and the terminal image.
@@ -108,6 +109,7 @@ class Logger:
             "geodesic_distance": float(geodesic_distance),
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "history": [str(h) for h in history],
+            "threshold": float(threshold)
         }
 
         meta_path = os.path.join(self.terminal_dir, "terminal_summary.json")
@@ -121,6 +123,7 @@ class Logger:
         traversed_distance: float,
         start_xz: Tuple[float, float],
         history: List[str],
+        threshold: float
     ):
         """
         Saves final episode metadata and the terminal image.
@@ -134,6 +137,7 @@ class Logger:
             "start_position_xz": [float(start_xz[0]), float(start_xz[1])],
             "timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "history": [str(h) for h in history],
+            "threshold": float(threshold)
         }
 
         meta_path = os.path.join(self.terminal_dir, "failure_summary.json")

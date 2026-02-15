@@ -9,7 +9,7 @@ SCRIPT = "scripts/run_offline.py"
 CONFIG = "config/CPnav_5_nano.yaml"
 MAX_JOBS = 15
 SEED = 42
-N_EXPERIMENTS = 100
+N_EXPERIMENTS = 300
 
 np.random.seed(SEED)
 EPISODES = np.random.choice(np.arange(0, 1000), size=N_EXPERIMENTS, replace=False).tolist()
