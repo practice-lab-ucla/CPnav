@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 import pandas as pd
 from pathlib import Path
 
@@ -82,8 +83,28 @@ def process_experiments(root_dir):
     return df
 
 # Usage
-root_directory = "logs/batch_20260214_000158" # Change this to your actual path
-results_df = process_experiments(root_directory)
-results_df.to_csv("experiment_results_summary.csv", index=False)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="collect experiment result")
 
-print("CSV generated successfully: experiment_results_summary.csv")
+    parser.add_argument(
+        "--exp_dir",
+        type=str,
+        required=True,
+        help="Root path to experiment directory",
+    )
+
+    parser.add_argument(
+        "--out_dir",
+        type=str,
+        default="./",
+        help="Out dir",
+    )
+
+    args = parser.parse_args()
+
+    root_directory = args.exp_dir
+    results_df = process_experiments(root_directory)
+    out_file = os.path.join(args.out_dir, "results.csv")
+    results_df.to_csv(out_file, index=False)
+
+    print(f"CSV generated successfully: {out_file}")

@@ -9,7 +9,7 @@ def parse_args():
     parser.add_argument(
         "--threshold",
         type=float,
-        default=0,
+        default=0.0,
         help="Threshold for backtrack action"
     )
 
