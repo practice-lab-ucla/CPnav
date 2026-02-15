@@ -57,10 +57,10 @@ EPISODES = np.random.choice(np.arange(0, 1000), size=N_EXPERIMENTS, replace=Fals
 
 # Create timestamped log directory
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-if args.batch_name == "":
+if args.batch_name == "" or args.batch_name is None:
     log_path = f"logs/batch_{timestamp}"
 else:
-    log_path = f"logs/{args.log_path}"
+    log_path = f"logs/{args.batch_name}"
 
 term_path = os.path.join(log_path, "terminal")
 os.makedirs(term_path, exist_ok=True)

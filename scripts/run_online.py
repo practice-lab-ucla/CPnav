@@ -40,13 +40,14 @@ def parse_args():
 async def main():
     args = parse_args()
 
-    runner = Runner(args.config, log_dir=args.log_dir)
+    runner = Runner(args.config, log_dir=args.log_dir, threshold=float(args.threshold))
     obs = runner.initialize(args.episode)
 
     print("===== RUN CONFIG =====")
     print("Config:", args.config)
     print("Log Path:", args.log_dir)
     print("Episode:", args.episode)
+    print("Threshold:", args.threshold)
     print("======================")
 
     while runner.has_steps():
