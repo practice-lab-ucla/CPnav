@@ -4,64 +4,26 @@ import numpy as np
 import subprocess
 from datetime import datetime
 
-
-import argparse
-
-parser = argparse.ArgumentParser(description="run offline experiment in batch")
-
-parser.add_argument(
-    "--config",
-    type=str,
-    default="config/CPnav_5_nano.yaml",
-    help="path to config file",
-)
-
-parser.add_argument(
-    "--max_jobs",
-    type=int,
-    default=15,
-    help="maximum number of jobs to run in parallel",
-)
-
-parser.add_argument(
-    "--seed",
-    type=int,
-    default=42,
-    help="seed"
-)
-
-parser.add_argument(
-    "--n_exp",
-    type=int,
-    default=300,
-    help="number of experiments to run"
-)
-
-parser.add_argument(
-    "--batch_name",
-    type=str,
-    default="",
-    help="name of the batch experiment folder"
-)
-
-args = parser.parse_args()
-
-MAX_JOBS = args.max_jobs
-SEED = args.seed
-N_EXPERIMENTS = args.n_exp
-CONFIG = args.config
+# --- Configuration ---
 SCRIPT = "scripts/run_offline.py"
+CONFIG = "config/CPnav_4o_mini.yaml"
+MAX_JOBS = 15
+SEED = 42
+N_EXPERIMENTS = 300
+
+
+
+forbidden = set(range(200, 222))
+full_pool = np.arange(0, 1000)
+allowed = np.array([i for i in full_pool if i not in forbidden])
 
 np.random.seed(SEED)
-EPISODES = np.random.choice(np.arange(0, 1000), size=N_EXPERIMENTS, replace=False).tolist()
+# EPISODES = np.random.choice(np.arange(0, 1000), size=N_EXPERIMENTS, replace=False).tolist()
+EPISODES = np.random.choice(allowed, size=N_EXPERIMENTS, replace=False).tolist()
 
 # Create timestamped log directory
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-if args.batch_name == "" or args.batch_name is None:
-    log_path = f"logs/batch_{timestamp}"
-else:
-    log_path = f"logs/{args.batch_name}"
-
+log_path = f"logs/batch_{timestamp}"
 term_path = os.path.join(log_path, "terminal")
 os.makedirs(term_path, exist_ok=True)
 
