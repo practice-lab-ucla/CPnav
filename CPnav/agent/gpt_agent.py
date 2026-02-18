@@ -181,9 +181,9 @@ class GPTAgent:
             except Exception:
                 data["action"] = data["action_index"]
 
-        if "confidence_score" in data:
+        if "confidence_scores" in data:
             try:
-                data["confidence_score"] = [float(score) for score in data["confidence_score"]]
+                data["confidence_scores"] = [float(score) for score in data["confidence_scores"]]
             except Exception:
                 pass
 
@@ -200,52 +200,69 @@ class GPTAgent:
 
         if prompt_type == 'stopping':
             stopping_prompt = (
-                f"The agent has been tasked with navigating to a {goal.upper()}. The agent has sent you an image from its current location."
-                f"The image is a fusion of three views from one position at different angles."
-                f"Your job is to decide if the agent is VERY CLOSE from a {goal}, and you have to CLEARLY see the goal with very high confidence, based ONLY on what is VISIBLE in the image."
-                f"Important: a chair is NOT a sofa, a sofa is NOT a bed, a plant MUST be inside the room. Do NOT infer the {goal} from the room type or context.\n"
+                f"### CONTEXT\n"
+                f"You are a navigation assistant for an agent searching for a {goal.upper()}. "
+                f"The input is a panoramic fusion of three camera views from the agent's current position.\n\n"
 
-                f"Step 1: Describe what is visible in the image and state explicitly whether a {goal} is present.\n"
+                f"### STEP 1: VISUAL ANALYSIS\n"
+                f"Describe the visible environment. State explicitly if a {goal.upper()} is present. "
+                f"**Strict Identification Rules:**\n"
+                f"- A chair is NOT a sofa; a sofa is NOT a bed.\n"
+                f"- Do NOT infer the {goal.upper()} exists based on room type (e.g., don't assume a bed is there just because it's a bedroom).\n"
+                f"- You must see the object with high confidence to confirm its presence.\n\n"
 
-                f"Step 2: Choose an action and output it in the format {{\"done\": <1 or 0>}}."
-                f"- Return 1 ONLY if the {goal} is clearly visible and not far from it."
-                f"- Return 0 if the {goal} is not visible or you are uncertain.\n"
+                f"### STEP 2: GOAL VERIFICATION (JSON)\n"
+                f"Determine if the agent has reached the target. Output the following JSON:\n"
+                f"{{\n"
+                f"  'done': <1 or 0>\n"
+                f"}}\n"
+                f"* Set to **1** ONLY if the {goal.upper()} is clearly visible and within immediate reach.\n"
+                f"* Set to **0** if the {goal.upper()} is not visible, far away, or you are uncertain.\n\n"
 
-                f"Step 3: Independently, rate the SCENE'S EXPLORATION POTENTIAL as a float in [0.0, 1.0], named global_semantic_score."
-                f"This score MUST depend only on the current environment, NOT on whether the goal is present or visible."
-                f"High scores mean the scene has open, traversable, informative paths."
-                f"Low scores mean likely dead-ends, cluttered/tight spaces, blocked passages, or no promising directions.\n"
+                f"### STEP 3: EXPLORATION POTENTIAL (JSON)\n"
+                f"Independently rate the environment's 'Global Semantic Score' (0.0 to 1.0). "
+                f"**This score must be based ONLY on navigability, NOT on the presence of the {goal.upper()}.**\n\n"
 
-                f"Important rules for global_semantic_score:"
-                f"- Do NOT increase the score just because the {goal} is visible."
-                f"- Base it on openness, navigability cues, line of sight, and apparent paths.\n"
+                f"**Scoring Rubric:**\n"
+                f"* **0.0 - 0.2:** View is blocked (e.g., facing a wall), cluttered, or has no navigable paths.\n"
+                f"* **0.3 - 0.6:** A clear outlet exists or there is a modest navigable space.\n"
+                f"* **0.7 - 1.0:** High potential; multiple corridors, open doorways, or large unobstructed spaces.\n\n"
 
-                f"Examples:"
-                f"0.0 to 0.1 → the view is completely blocked, directly facing a wall, with CLEARLY NO navigable path\n"
-                f"0.1 to 0.3 → the view has no clear outlet, close to a wall, or almost blocked\n"
-                f"0.3 to 0.7 → the view has a clear outlet or large navigable space (the higher the score, the clearer and more navigable it looks)\n"
-                f"0.7 to 1.0 → the view has multiple outlets, corridors, or very large navigable space to navigate\n"
-                f"After Step 3, immediately output this JSON line:"
-                f"{{\"global_semantic_score\": <float 0.0 to 1.0>}}"
+                f"Output the score in this format:\n"
+                f"{{\n"
+                f"  'global_semantic_score': <float>\n"
+                f"}}"
             )
             return None, stopping_prompt
         if prompt_type == 'action':
             action_prompt = (
-                f"TASK: NAVIGATE TO THE NEAREST {goal.upper()}, and get as close to it as possible. "
-                f"Use your prior knowledge about where items are typically located within a home. "
-                f"There are {num_actions+1} actions that you can choose from (including action 0). "
-                f"Actions are shown with red arrows superimposed onto your observation, labeled with numbers in white circles. "
-                f"The image is a fusion of three views from one position at different angles."
-                f"{'NOTE: Choose action 0 (rewind) if you want to rewind to a previous step or do not see anything worth exploring '}"
-                f"First, tell me what you see in your sensor observation, and if you have any leads on finding the {goal.upper()}. "
-                f"Second, tell me which general direction you should go in. "
-                f"Lastly, explain which action achieves that best and return it as JSON in the format: "
-                f"{{'action': <action_key>, 'score': <confidence_score>, 'confidence_score': [<score_0>, <score_1>, ..., <score_n>]}}. "
-                f"The 'confidence_score' list gives, for each action, the model's estimated probability that selecting that action will best advance the agent toward the goal (one value per action, in [0,1]). "
-                f"Do NOT normalize or force the scores to sum to 1. "
-                f"You must generate exactly {num_actions+1} confidence scores, one for each action shown. "
-                f"{'If Action 0 (rewind) is available, its confidence score must appear first in the list, followed by Action 1, Action 2, etc.' if True else 'The scores should be listed in order: Action 1, Action 2, Action 3, and so on.'}"
+                f"### TASK\n"
+                f"Navigate to the nearest {goal.upper()} and stop as close to it as possible. "
+                f"Use common sense regarding typical home layouts to guide your search.\n\n"
 
+                f"### VISUAL INPUT\n"
+                f"The provided image is a views from your current position. "
+                f"Available paths are indicated by red arrows with white numeric labels (0 to {num_actions}).\n\n"
+
+                f"### DECISION RULES\n"
+                f"* **Action 0 (Turn Around):** Select this if you need to backtrack or if no visible path leads toward the {goal.upper()}.\n"
+                f"* **Exploration:** Prioritize directions that likely lead to rooms where a {goal.upper()} is typically found.\n\n"
+
+                f"### RESPONSE FORMAT\n"
+                f"Provide your response in three parts:\n"
+                f"1. **Observation:** Describe the current scene and identify any visual leads for the {goal.upper()}.\n"
+                f"2. **Strategy:** State which general direction is most promising and why.\n"
+                f"3. **Action (JSON):** Output a JSON object exactly as follows:\n"
+                f"{{\n"
+                f"  'action': <int>,\n"
+                f"  'score': <float_highest_score>,\n"
+                f"  'confidence_scores': [<score_0>, ..., <score_{num_actions}>]\n"
+                f"}}\n\n"
+
+                f"### CONSTRAINTS\n"
+                f"* Provide exactly {num_actions + 1} scores in the 'confidence_scores' list, ordered sequentially from Action 0 to Action {num_actions}.\n"
+                f"* Each score must be between 0 and 1. Do NOT normalize (they do not need to sum to 1).\n"
+                f"* The 'score' must represent the estimated probability (0.0 to 1.0) that the selected action will successfully lead toward the {goal.upper()}."
             )
             return system_prompt, action_prompt 
     

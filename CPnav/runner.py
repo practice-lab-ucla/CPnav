@@ -43,6 +43,7 @@ class Runner:
         )
 
         # 3. Init State & Memory
+        self.normalize_action_scores = self.cfg["agent_cfg"]["normalize_action_scores"]
         self.tree = ExplorationTree()
         self.offline_tree = OfflineGridTree(
             float(self.cfg["agent_cfg"]["grid_spacing_m"])
@@ -143,8 +144,18 @@ class Runner:
             action_idx=act_data.get("action", None),
             done=int(stop_data.get("done", 0)),
             gsv=stop_data.get("global_semantic_score", None),
-            confidence_scores=act_data.get("confidence_score", None)
+            confidence_scores=act_data.get("confidence_scores", None)
         )
+    
+    @staticmethod
+    def normalize_scores(score_list, length):        
+        if (not score_list) or(len(score_list) != length) or (sum(score_list)== 0): # invalid action scores
+            score_list = [1/length] * length
+        else:
+            sum_scores = sum(score_list)
+            score_list = [s/sum_scores for s in score_list]
+        
+        return score_list
 
     def log_and_record(self, 
         obs, 
@@ -157,6 +168,10 @@ class Runner:
         """
         Logs the step to disk and records the node in the ExplorationTree.
         """
+        confidence_scores = decision.confidence_scores
+        if self.normalize_action_scores:
+            confidence_scores = self.normalize_scores(confidence_scores, len(actions)+1)
+
         # 1. Disk Log
         self.logger.log_step(
             overlay_rgb=overlay_rgb,
@@ -167,13 +182,13 @@ class Runner:
             act_text=decision.act_text,
             actions=actions,
             action_idx=decision.action_idx,
-            confidence_scores=decision.confidence_scores,
+            confidence_scores=confidence_scores,
             done=decision.done,
             global_semantic_score=decision.gsv,
         )
 
         # 2. Tree Record
-        self._record_to_tree(obs, sorted_actions, decision.gsv, decision.confidence_scores)
+        self._record_to_tree(obs, sorted_actions, decision.gsv, confidence_scores)
         
         # self.tree.debug_print_node(0)
         

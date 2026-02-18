@@ -96,7 +96,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--out_dir",
         type=str,
-        default="./",
+        default=None,
         help="Out dir",
     )
 
@@ -104,7 +104,10 @@ if __name__ == "__main__":
 
     root_directory = args.exp_dir
     results_df = process_experiments(root_directory)
-    out_file = os.path.join(args.out_dir, "results.csv")
+    if args.out_dir is None:
+        out_file = os.path.join(args.exp_dir, "results.csv")
+    else:
+        out_file = os.path.join(args.out_dir, "results.csv")
     results_df.to_csv(out_file, index=False)
 
     print(f"CSV generated successfully: {out_file}")

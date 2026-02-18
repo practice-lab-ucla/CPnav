@@ -58,6 +58,7 @@ agent_cfg:
   project: true
   pivot: false
   context_history: 0
+  normalize_action_scores: true
 
   # --- Physical & Safety Constraints (Planner side) ---
   agent_radius: 0.1
