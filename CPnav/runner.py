@@ -149,7 +149,7 @@ class Runner:
     
     @staticmethod
     def normalize_scores(score_list, length):        
-        if (not score_list) or(len(score_list) != length) or (sum(score_list)== 0): # invalid action scores
+        if (not score_list) or (len(score_list) != length) or (sum(score_list)== 0): # invalid action scores
             score_list = [1/length] * length
         else:
             sum_scores = sum(score_list)

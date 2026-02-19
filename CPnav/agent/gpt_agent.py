@@ -193,16 +193,27 @@ class GPTAgent:
     def _construct_prompt(goal: str, prompt_type: str, num_actions: int=0):
 
         system_prompt = (
-            "You are an embodied robotic assistant, with an RGB image sensor. You observe the image and instructions "
-            "given to you and output a textual response, which is converted into actions that physically move you "
+            "You are an advanced Embodied Visual Navigation Agent. "
+            "Your sole purpose is to navigate a physical environment to locate a specified target object using RGB camera input.\n\n"
+            
+            "### CORE CAPABILITIES\n"
+            "1. **Visual Recognition:** You can identify household objects and distinguish between similar items (e.g., differentiating a sofa from a bed).\n"
+            "2. **Spatial Reasoning:** You use common sense about home layouts to guide your search (e.g., searching for a bed implies looking for a bedroom, not a kitchen).\n"
+            "3. **Structured Output:** You must strictly follow the requested JSON schemas for every response. Do not output conversational filler.\n\n"
+            
+            "### OPERATIONAL MODES\n"
+            "You will be prompted in one of two states:\n"
+            "- **State A (Analysis):** You will assess if the goal is found and if the area is navigable.\n"
+            "- **State B (Action):** You will see an image with navigational overlays (labeled arrows) and must output a move decision.\n\n"
+            
+            "Maintain a logical, objective, and probabilistic mindset. Prioritize exploration of new areas over backtracking unless the path is blocked."
         )
-
 
         if prompt_type == 'stopping':
             stopping_prompt = (
                 f"### CONTEXT\n"
                 f"You are a navigation assistant for an agent searching for a {goal.upper()}. "
-                f"The input is a panoramic fusion of three camera views from the agent's current position.\n\n"
+                f"The input is a camera view from the agent's current position.\n\n"
 
                 f"### STEP 1: VISUAL ANALYSIS\n"
                 f"Describe the visible environment. State explicitly if a {goal.upper()} is present. "
@@ -212,12 +223,12 @@ class GPTAgent:
                 f"- You must see the object with high confidence to confirm its presence.\n\n"
 
                 f"### STEP 2: GOAL VERIFICATION (JSON)\n"
-                f"Determine if the agent has reached the target. Output the following JSON:\n"
+                f"Determine if the agent has found {goal.upper()}. Output the following JSON:\n"
                 f"{{\n"
-                f"  'done': <1 or 0>\n"
+                f"  \"done\": <1 or 0>\n"
                 f"}}\n"
-                f"* Set to **1** ONLY if the {goal.upper()} is clearly visible and within immediate reach.\n"
-                f"* Set to **0** if the {goal.upper()} is not visible, far away, or you are uncertain.\n\n"
+                f"* Set to **1** ONLY if the {goal.upper()} is clearly visible and within 2 meters reach.\n"
+                f"* Set to **0** if the {goal.upper()} is not visible, or you are uncertain.\n\n"
 
                 f"### STEP 3: EXPLORATION POTENTIAL (JSON)\n"
                 f"Independently rate the environment's 'Global Semantic Score' (0.0 to 1.0). "
@@ -230,14 +241,14 @@ class GPTAgent:
 
                 f"Output the score in this format:\n"
                 f"{{\n"
-                f"  'global_semantic_score': <float>\n"
+                f"  \"global_semantic_score\": <float>\n"
                 f"}}"
             )
             return None, stopping_prompt
         if prompt_type == 'action':
             action_prompt = (
                 f"### TASK\n"
-                f"Navigate to the nearest {goal.upper()} and stop as close to it as possible. "
+                f"Choose the path to move close to the nearest {goal.upper()} "
                 f"Use common sense regarding typical home layouts to guide your search.\n\n"
 
                 f"### VISUAL INPUT\n"
@@ -254,9 +265,9 @@ class GPTAgent:
                 f"2. **Strategy:** State which general direction is most promising and why.\n"
                 f"3. **Action (JSON):** Output a JSON object exactly as follows:\n"
                 f"{{\n"
-                f"  'action': <int>,\n"
-                f"  'score': <float_highest_score>,\n"
-                f"  'confidence_scores': [<score_0>, ..., <score_{num_actions}>]\n"
+                f"  \"action\": <int>,\n"
+                f"  \"score\": <float_highest_score>,\n"
+                f"  \"confidence_scores\": [<score_0>, ..., <score_{num_actions}>]\n"
                 f"}}\n\n"
 
                 f"### CONSTRAINTS\n"
