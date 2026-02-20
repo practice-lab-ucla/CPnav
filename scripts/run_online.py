@@ -34,13 +34,36 @@ def parse_args():
         help="Episode ID to initialize",
     )
 
+    parser.add_argument(
+        "--mode",
+        type=str,
+        default="cp_nav",  # Updated from 100 to a valid default
+        choices=["cp_nav", "simple_set", "prompt_set", "ensemble_set"],
+        help="Navigation mode for the agent (default: cp_nav)",
+    )
+
+    parser.add_argument(
+        "--alpha",
+        type=float,
+        default=0.3,  # Updated from 100 to a valid default
+        help="Threshold used for constructing prediction set, only used if mode = simple_set or ensemble_set",
+    )
+
     return parser.parse_args()
 
 
 async def main():
     args = parse_args()
-
-    runner = Runner(args.config, log_dir=args.log_dir, threshold=float(args.threshold))
+    threshold = float(args.threshold)
+    if args.mode != "cp_nav":
+        threshold = 0.0
+    runner = Runner(
+        args.config, 
+        log_dir=args.log_dir, 
+        threshold=threshold, 
+        mode=args.mode, 
+        alpha=float(args.alpha)
+    )
     obs = runner.initialize(args.episode)
 
     print("===== RUN CONFIG =====")
@@ -48,6 +71,7 @@ async def main():
     print("Log Path:", args.log_dir)
     print("Episode:", args.episode)
     print("Threshold:", args.threshold)
+    print("Mode:", args.mode)
     print("======================")
 
     while runner.has_steps():

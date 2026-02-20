@@ -53,6 +53,21 @@ parser.add_argument(
     help="name of the batch experiment folder"
 )
 
+parser.add_argument(
+    "--mode",
+    type=str,
+    default="cp_nav",  # Updated from 100 to a valid default
+    choices=["cp_nav", "simple_set", "prompt_set", "ensemble_set"],
+    help="Navigation mode for the agent (default: cp_nav)",
+)
+
+parser.add_argument(
+    "--alpha",
+    type=float,
+    default=0.3,  # Updated from 100 to a valid default
+    help="Threshold used for constructing prediction set, only used if mode = simple_set or ensemble_set",
+)
+
 args = parser.parse_args()
 
 MAX_JOBS = args.max_jobs
@@ -96,7 +111,9 @@ def run_experiments():
                     "--config", CONFIG, 
                     "--log_dir", log_path, 
                     "--episode", str(ep),
-                    "--threshold", str(THR)
+                    "--threshold", str(THR),
+                    "--mode", str(args.mode),
+                    "--alpha", args.alpha
                 ],
                 stdout=f,
                 stderr=subprocess.STDOUT,

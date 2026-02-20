@@ -1,11 +1,12 @@
 import os
 import cv2
 import yaml
+import math
 import asyncio
 import numpy as np
 from dotenv import load_dotenv
 from dataclasses import dataclass
-from typing import Optional, List, Tuple, Dict, Any
+from typing import Optional, List, Tuple, Dict, Any, Literal
 
 from CPnav.logger import Logger
 from CPnav.agent import GPTAgent
@@ -23,9 +24,18 @@ class AgentDecision:
     done: bool
     gsv: Optional[float]
     confidence_scores: Optional[List[float]]
+    action_set: Optional[List[int]]
 
 class Runner:
-    def __init__(self, cfg_path: str = "config/CPnav_5_nano.yaml", log_dir="logs/", threshold=0):
+    def __init__(
+            self, 
+            cfg_path: str = "config/CPnav_5_nano.yaml", 
+            log_dir="logs/", 
+            threshold=0,
+            mode: Literal["cp_nav", "simple_set", "prompt_set", "ensemble_set"]="cp_nav",
+            *,
+            alpha=0.3,  # used only when simple set is used
+        ):
         # 1. Load Config & Env
         load_dotenv(dotenv_path=".env")
         with open(cfg_path, "r") as f:
@@ -39,8 +49,11 @@ class Runner:
             print("Warning: OPENAI_API_KEY not found in environment variables.")
         model = self.cfg["agent_cfg"]["model"]
         self.gpt_agent = GPTAgent(
-            model=model, api_key=api_key
+            model=model, 
+            api_key=api_key,
+            mode=mode
         )
+        self.mode = mode
 
         # 3. Init State & Memory
         self.normalize_action_scores = self.cfg["agent_cfg"]["normalize_action_scores"]
@@ -63,6 +76,7 @@ class Runner:
         self.start_xz = None
         self.goal_xz = None
         self.goal_image = None
+        self.alpha = alpha  # used only when simple set / ensemble set is selected
 
         # NEW: Track total distance
         self.traversed_distance = 0.0
@@ -144,7 +158,8 @@ class Runner:
             action_idx=act_data.get("action", None),
             done=int(stop_data.get("done", 0)),
             gsv=stop_data.get("global_semantic_score", None),
-            confidence_scores=act_data.get("confidence_scores", None)
+            confidence_scores=act_data.get("confidence_scores", None),
+            action_set=act_data.get("action_set", [])
         )
     
     @staticmethod
@@ -157,22 +172,64 @@ class Runner:
         
         return score_list
 
-    def log_and_record(self, 
-        obs, 
-        decision: AgentDecision, 
-        overlay_rgb, 
-        voxel_rgb, 
-        actions, 
-        sorted_actions
-    ):
+    def _get_confidence_scores(self, decision, actions):
+        """
+        Calculates and filters confidence scores based on the current mode.
+        """
+        expected_length = len(actions) + 1
+        
+        # Mode: Prompt Set (Uses a separate decision attribute)
+        if self.mode == "prompt_set":
+            action_set = decision.action_set
+            if not action_set:
+                action_set = [decision.action_idx]
+            return [
+                math.exp(-action_set.index(i)) if i in action_set else -1 
+                for i in range(expected_length)
+            ]
+
+        # Mode: Conformal Prediction / Ensemble Sets
+        if self.mode in ["cp_nav", "simple_set", "ensemble_set"]:
+            scores = decision.confidence_scores
+            
+            if self.normalize_action_scores:
+                scores = self.normalize_scores(scores, expected_length)
+
+            elif len(scores) != expected_length:
+                scores = [1 / expected_length] * expected_length
+
+            # Apply Alpha-based filtering for set modes
+            if self.mode in ["simple_set", "ensemble_set"]:
+                # Sort by score to identify the smallest set that meets the alpha threshold
+                score_list = sorted(enumerate(scores), key=lambda x: x[1], reverse=True)
+                cumulative_score = 0
+                allowed_indices = set()
+
+                for i, s in score_list:
+                    cumulative_score += s
+                    allowed_indices.add(i)
+                    if cumulative_score >= 1-self.alpha:
+                        break
+                
+                # Mask scores not included in the cumulative threshold
+                return [s if i in allowed_indices else -1 for i, s in enumerate(scores)]
+            
+            return scores
+
+        # Default fallback
+        return getattr(decision, 'confidence_scores', [])
+
+    def log_and_record(self, obs, decision, overlay_rgb, voxel_rgb, actions, sorted_actions):
         """
         Logs the step to disk and records the node in the ExplorationTree.
         """
-        confidence_scores = decision.confidence_scores
-        if self.normalize_action_scores:
-            confidence_scores = self.normalize_scores(confidence_scores, len(actions)+1)
+        # 1. Logic Processing
+        confidence_scores = self._get_confidence_scores(decision, actions)
+        gsv = 1
+        if self.mode in ["cp_nav"]:
+            gsv = decision.gsv 
 
-        # 1. Disk Log
+        # 2. Disk Log
         self.logger.log_step(
             overlay_rgb=overlay_rgb,
             voxel_rgb=voxel_rgb,
@@ -184,14 +241,11 @@ class Runner:
             action_idx=decision.action_idx,
             confidence_scores=confidence_scores,
             done=decision.done,
-            global_semantic_score=decision.gsv,
+            global_semantic_score=gsv,
         )
 
-        # 2. Tree Record
+        # 3. Tree Record
         self._record_to_tree(obs, sorted_actions, decision.gsv, confidence_scores)
-        
-        # self.tree.debug_print_node(0)
-        
 
     def execute_move(self, action, current_obs, action_score=None):
         """
@@ -283,20 +337,6 @@ class Runner:
         self.history.append(f"{self.cur_node_id}->0 turnaround")
         print(f"Rewinding: Node {self.cur_node_id} -> Node 0 (Action turnaround)")
         return self.execute_move(PolarAction(0, np.pi), obs)
-
-    def _record_to_tree(self, obs, sorted_actions, gsv, scores):
-        """Internal helper to add a node to the ExplorationTree."""
-        s = obs["agent_state"]
-        pos = s.position
-        yaw = quat_to_yaw_habitat(s.rotation)
-
-        self.tree.add_step(
-            step_id=self.cur_node_id,
-            pose=Pose2D(pos[0], pos[2], yaw),
-            actions=self.tree.to_action_proposal(sorted_actions),
-            gsv=gsv,
-            scores=scores,
-        )
     
     def teleport_agent(self, pose: TeleopAction):
         """Abstraction for teleporting the agent."""
@@ -386,4 +426,18 @@ class Runner:
             )
         
         print(f"Episode Failed. Total Distance: {self.traversed_distance:.2f}m")
+    
+    def _record_to_tree(self, obs, sorted_actions, gsv, scores):
+        """Internal helper to add a node to the ExplorationTree."""
+        s = obs["agent_state"]
+        pos = s.position
+        yaw = quat_to_yaw_habitat(s.rotation)
+
+        self.tree.add_step(
+            step_id=self.cur_node_id,
+            pose=Pose2D(pos[0], pos[2], yaw),
+            actions=self.tree.to_action_proposal(sorted_actions),
+            gsv=gsv,
+            scores=scores,
+        )
         

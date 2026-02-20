@@ -7,7 +7,7 @@ import base64
 import logging
 import hashlib
 import asyncio
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Tuple, Literal
 
 import numpy as np
 from PIL import Image
@@ -29,10 +29,12 @@ class GPTAgent:
         model: str = "gpt-5-nano",
         api_key: str = None,
         store: bool = False,
+        mode: Literal["cp_nav", "simple_set", "prompt_set", "ensemble_set"]="cp_nav"
     ):
         self.client = AsyncOpenAI(api_key=api_key)
         self.model = model
         self.store = store
+        self.mode = mode
 
     @staticmethod
     def _encode_rgb_np_to_base64_png(rgb: np.ndarray) -> str:
@@ -133,42 +135,89 @@ class GPTAgent:
         goal: str,
         prompt_type: str,
         num_actions: int,
-        timeout_s: Optional[float] = None,  # left unused for parity
+        timeout_s: Optional[float] = None,
     ) -> Tuple[str, Dict[str, Any], Dict[str, Any], str]:
-        """
-        Returns:
-          text: raw model output text
-          data: parsed dict (same logic as before)
-          payload_log: sanitized request payload for logging
-          prompt_text: the exact prompt text
-        """
+        
         prompt_text, payload, payload_log = self._build_request(
-            rgb=rgb,
-            goal=goal,
-            prompt_type=prompt_type,
-            num_actions=num_actions,
+            rgb=rgb, goal=goal, prompt_type=prompt_type, num_actions=num_actions
         )
 
+        # Handle Ensemble Logic for Actions
+        if self.mode == "ensemble_set" and prompt_type == "action":
+            return await self._get_ensemble_scores(payload, payload_log, prompt_text, num_actions)
+
+        # Standard Single Query Logic
         resp = await self.client.responses.create(**payload)
         text = (resp.output_text or "").strip()
 
         if prompt_type == "stopping":
             data = eval_vlm_response_stopping(text)
-            if "done" in data:
-                try:
-                    data["done"] = int(data["done"])
-                except Exception:
-                    pass
-            if "global_semantic_score" in data:
-                try:
-                    data["global_semantic_score"] = float(data["global_semantic_score"])
-                except Exception:
-                    pass
             return text, data, payload_log, prompt_text
 
-        # action
-        data = eval_vlm_response(text)
+        # Standard action parsing
+        data = self._parse_action_data(text)
+        return text, data, payload_log, prompt_text
 
+    async def _get_ensemble_scores(
+        self, 
+        payload: Dict[str, Any], 
+        payload_log: Dict[str, Any], 
+        prompt_text: str, 
+        num_actions: int, 
+        n_trials: int = 20
+    ) -> Tuple[str, Dict[str, Any], Dict[str, Any], str]:
+        """
+        Queries the VLM 20 times concurrently and computes action frequency.
+        """
+        # Run 20 requests in parallel for efficiency
+        tasks = [self.client.responses.create(**payload) for _ in range(n_trials)]
+        responses = await asyncio.gather(*tasks)
+        
+        action_counts = [0] * (num_actions + 1)
+        valid_responses = 0
+        last_text = ""
+
+        for resp in responses:
+            text = (resp.output_text or "").strip()
+            last_text = text # Keep the last one for the 'text' return value
+            data = eval_vlm_response(text)
+            
+            # Extract action index
+            action_idx = data.get("action")
+            if action_idx is None:
+                action_idx = data.get("action_index")
+            
+            try:
+                idx = int(action_idx)
+                if 0 <= idx <= num_actions:
+                    action_counts[idx] += 1
+                    valid_responses += 1
+            except (ValueError, TypeError):
+                continue
+
+        # Calculate frequencies (Confidence Scores)
+        # If no valid responses, default to 0.0
+        conf_scores = [
+            count / valid_responses if valid_responses > 0 else 0.0 
+            for count in action_counts
+        ]
+        
+        # The 'best' action is the one with the highest frequency
+        best_action = int(np.argmax(conf_scores))
+        
+        ensemble_data = {
+            "action": best_action,
+            "score": conf_scores[best_action],
+            "confidence_scores": conf_scores,
+            "trials": n_trials,
+            "valid_samples": valid_responses
+        }
+
+        return last_text, ensemble_data, payload_log, prompt_text
+
+    def _parse_action_data(self, text: str) -> Dict[str, Any]:
+        """Helper to centralize the parsing/casting logic for actions."""
+        data = eval_vlm_response(text)
         if "action" in data:
             try:
                 data["action"] = int(data["action"])
@@ -186,11 +235,23 @@ class GPTAgent:
                 data["confidence_scores"] = [float(score) for score in data["confidence_scores"]]
             except Exception:
                 pass
+        if "action_set" in data:
+            try:
+                data["action_set"] = [int(action_id) for action_id in data["action_set"]]
+            except Exception:
+                pass
+        if "action" not in data and "action_index" in data:
+            data["action"] = data["action_index"]
+        try:
+            if "action" in data: data["action"] = int(data["action"])
+        except: pass
+        return data
 
-        return text, data, payload_log, prompt_text
-
-    @staticmethod
-    def _construct_prompt(goal: str, prompt_type: str, num_actions: int=0):
+    def _construct_prompt(
+            self, 
+            goal: str, 
+            prompt_type: Literal["stopping", "action"], 
+            num_actions: int=0):
 
         system_prompt = (
             "You are an advanced Embodied Visual Navigation Agent. "
@@ -244,8 +305,8 @@ class GPTAgent:
                 f"  \"global_semantic_score\": <float>\n"
                 f"}}"
             )
-            return None, stopping_prompt
-        if prompt_type == 'action':
+            return system_prompt, stopping_prompt
+        if prompt_type == 'action' and (self.mode in ["cp_nav", "simple_set"]):
             action_prompt = (
                 f"### TASK\n"
                 f"Choose the path to move close to the nearest {goal.upper()} "
@@ -265,7 +326,7 @@ class GPTAgent:
                 f"2. **Strategy:** State which general direction is most promising and why.\n"
                 f"3. **Action (JSON):** Output a JSON object exactly as follows:\n"
                 f"{{\n"
-                f"  \"action\": <int>,\n"
+                f"  \"action\": <int: best_action_index>,\n"
                 f"  \"score\": <float_highest_score>,\n"
                 f"  \"confidence_scores\": [<score_0>, ..., <score_{num_actions}>]\n"
                 f"}}\n\n"
@@ -275,7 +336,61 @@ class GPTAgent:
                 f"* Each score must be between 0 and 1. Do NOT normalize (they do not need to sum to 1).\n"
                 f"* The 'score' must represent the estimated probability (0.0 to 1.0) that the selected action will successfully lead toward the {goal.upper()}."
             )
-            return system_prompt, action_prompt 
+        elif prompt_type == 'action' and (self.mode in ["prompt_set"]):
+            action_prompt = (
+                f"### TASK\n"
+                f"Choose the path to move close to the nearest {goal.upper()} "
+                f"Use common sense regarding typical home layouts to guide your search.\n\n"
+
+                f"### VISUAL INPUT\n"
+                f"The provided image is a views from your current position. "
+                f"Available paths are indicated by red arrows with white numeric labels (0 to {num_actions}).\n\n"
+
+                f"### DECISION RULES\n"
+                f"* **Action 0 (Turn Around):** Select this if you need to backtrack or if no visible path leads toward the {goal.upper()}.\n"
+                f"* **Exploration:** Prioritize directions that likely lead to rooms where a {goal.upper()} is typically found.\n\n"
+
+                f"### RESPONSE FORMAT\n"
+                f"Provide your response in three parts:\n"
+                f"1. **Observation:** Describe the current scene and identify any visual leads for the {goal.upper()}.\n"
+                f"2. **Strategy:** State which general direction is most promising and why.\n"
+                f"3. **Action (JSON):** Output a JSON object exactly as follows:\n"
+                f"{{\n"
+                f"  \"action\": <int: best_action_index>,\n"
+                f"  \"action_set\": [<int: highest_priority>, <int: second_priority>, ...]\n"
+                f"}}\n\n"
+
+                f"### CONSTRAINTS\n"
+                f"- 'action_set' must include the indices of all paths (you can also include backtrack) that may move you closer to the goal, sorted from most to least promising.\n"
+                f"- Do not include any text after the JSON block."
+            )
+        elif prompt_type == 'action' and (self.mode in ["ensemble_set"]):
+            action_prompt = (
+                f"### TASK\n"
+                f"Choose the path to move close to the nearest {goal.upper()} "
+                f"Use common sense regarding typical home layouts to guide your search.\n\n"
+
+                f"### VISUAL INPUT\n"
+                f"The provided image is a views from your current position. "
+                f"Available paths are indicated by red arrows with white numeric labels (0 to {num_actions}).\n\n"
+
+                f"### DECISION RULES\n"
+                f"* **Action 0 (Turn Around):** Select this if you need to backtrack or if no visible path leads toward the {goal.upper()}.\n"
+                f"* **Exploration:** Prioritize directions that likely lead to rooms where a {goal.upper()} is typically found.\n\n"
+
+                f"### RESPONSE FORMAT\n"
+                f"1. **Observation:** Describe the current scene and identify any visual leads for the {goal.upper()}.\n"
+                f"2. **Strategy:** State which general direction is most promising and why.\n"
+                f"3. **Action (JSON):** Output a JSON object exactly as follows:\n"
+                f"{{\n"
+                f"  \"action\": <int: best_action_index>,\n"
+                f"}}\n\n"
+
+                f"### CONSTRAINTS\n"
+                f"- Do not include any text after the JSON block."
+            )
+        
+        return system_prompt, action_prompt 
     
     async def query_stop_and_action(
         self,

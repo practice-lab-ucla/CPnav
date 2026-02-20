@@ -4,7 +4,7 @@ import math
 import heapq
 import networkx as nx
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set, Tuple, Callable, Literal
+from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 
 from ..env.sim_wrapper import PolarAction, TeleopAction
 
@@ -79,15 +79,12 @@ class ExplorationTree:
     Includes a Global Priority Queue for actions.
     """
 
-    def __init__(self, method: Literal["cp_nav", "simple_set", "prompt_set", "ensemble_set"] = "cp_nav"):
+    def __init__(self):
         self.G = nx.DiGraph()
         # Heap storing: (-score, -step_id, action_id)
         # We use negative score for Max-Heap behavior.
         # We use negative step_id to break ties by Recency (newer steps first).
         self.action_pq: List[Tuple[float, int, int]] = [] 
-        if method not in ("cp_nav", "simple_set", "prompt_set", "ensemble_set"):
-            raise ValueError(f"invalid method {method!r}")
-        self.method = method
 
     # --------- internal helper ---------
 
@@ -161,7 +158,6 @@ class ExplorationTree:
         scores: Optional[float] = None,
         *,
         exclude_action0: bool = False,
-        alpha_threshold: float = 0.3  # only valid when self.method = "cp_nav"
     ) -> None:
         """
         Add or overwrite a node.
@@ -176,31 +172,7 @@ class ExplorationTree:
         idxs = [a.index for a in actions]
 
         data = NodeData(step=step_id, pose=pose, actions=actions, gsv=gsv)
-        if self.method == "cp_nav":
-            data.unexplored = set(idxs)
-        
-        elif (self.method == "simple_set") or (self.method == "ensemble_set"):
-            # Build candidate list (action objects, id, raw_score)
-            candidates: List[Tuple[ActionProposal, int, float]] = []
-            for a in actions:
-                aid = int(a.index)
-                score = float(a.score)
-                candidates.append((a, aid, score))
-            
-            candidates.sort(key=lambda t: t[2], reverse=True)
-
-            # Accumulate until cumulative >= 1 - alpha_threshold
-            cutoff = 1.0 - float(alpha_threshold)
-            accumulated = 0.0
-            valid_action_ids: List[int] = []
-            for (a, aid, score) in candidates:
-                accumulated += score
-                valid_action_ids.append(aid)
-                if accumulated >= cutoff:
-                    break
-
-            # Set unexplored to only the valid actions (so filtered-out actions won't be tried)
-            data.unexplored = set(valid_action_ids)
+        data.unexplored = set(idxs)
 
         self.G.add_node(step_id, data=data)
         
