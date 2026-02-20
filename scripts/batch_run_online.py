@@ -28,7 +28,7 @@ parser.add_argument(
 parser.add_argument(
     "--seed",
     type=int,
-    default=42,
+    default=100,
     help="seed"
 )
 
@@ -113,7 +113,7 @@ def run_experiments():
                     "--episode", str(ep),
                     "--threshold", str(THR),
                     "--mode", str(args.mode),
-                    "--alpha", args.alpha
+                    "--alpha", str(args.alpha)
                 ],
                 stdout=f,
                 stderr=subprocess.STDOUT,
