@@ -33,6 +33,7 @@ class ActionProposer:
         self.min_action_dist = self.ap_cfg["min_action_dist"]
         self.clip_frac = self.ap_cfg["clip_frac"]
         self.hard_spacing = np.deg2rad(self.ap_cfg["hard_spacing_deg"])
+        self.propose_if_all_explored = self.ap_cfg.get("propose_if_all_explored", False)
 
         # Exploration Bias
         if self.ap_cfg.get("enable", False):
@@ -62,6 +63,11 @@ class ActionProposer:
         
         # 3. Filter and refine based on spacing/bias
         a_final = self._refine_actions(a_checked)
+
+        if not a_final and self.propose_if_all_explored:
+            # If all actions are explored but config allows proposing anyway, 
+            # then we can relax the filter to include explored actions.
+            a_final = self._refine_actions([(r, theta, True) for (r, theta, _) in a_checked])
 
         # 4. Update the voxel map with the *raw* depth data
         #    (We use the initial raw actions to update the map, not the refined ones)
