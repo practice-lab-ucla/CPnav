@@ -1,13 +1,5 @@
 import logging
 
-import habitat_sim
-import magnum as mn
-import numpy as np
-from typing import Optional
-from ..utils import local_to_global
-
-from habitat_sim.utils.common import quat_from_angle_axis, quat_to_angle_axis
-
 
 class PolarAction:
     """
@@ -45,6 +37,15 @@ class TeleopAction:
         self.x = x
         self.z = z
         self.yaw = yaw
+
+
+import habitat_sim
+import magnum as mn
+import numpy as np
+from typing import Optional
+from ..utils import local_to_global
+
+from habitat_sim.utils.common import quat_from_angle_axis, quat_to_angle_axis
 
 
 class SimWrapper:

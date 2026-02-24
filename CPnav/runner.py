@@ -34,14 +34,21 @@ class Runner:
             threshold=0,
             mode: Literal["cp_nav", "simple_set", "prompt_set", "ensemble_set"]="cp_nav",
             *,
-            alpha=0.3,  # used only when simple set is used
+            alpha=0.3,  
+            custom_env=None  # <-- 1. Add this new parameter
         ):
-        # 1. Load Config & Env
+        # 1. Load Config
         load_dotenv(dotenv_path=".env")
         with open(cfg_path, "r") as f:
             self.cfg = yaml.safe_load(f)
             
-        self.env = ObjectNavEnv(self.cfg)
+        # 2. Inject the environment 
+        # If running on a real robot, custom_env will be your ROS2 wrapper.
+        # If running in sim, custom_env is None, so it builds ObjectNavEnv.
+        if custom_env is not None:
+            self.env = custom_env
+        else:
+            self.env = ObjectNavEnv(self.cfg)
         
         # 2. Init Agent
         api_key = os.getenv("OPENAI_API_KEY")
