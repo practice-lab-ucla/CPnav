@@ -4,10 +4,11 @@ import traceback
 import cv2
 import numpy as np
 import math
-import quaternion
+import quaternion as qt
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+from typing import Tuple
 
 
 GREEN = (0, 255, 0)
@@ -16,80 +17,38 @@ BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREY = (200, 200, 200)
 
-def quat_to_angle_axis(quat):
+def quat_to_angle_axis(quat: qt.quaternion) -> Tuple[float, np.ndarray]:
+    r"""Converts a quaternion to angle axis format
+
+    :param quat: The quaternion
+    :return:
+        -   `float` --- The angle to rotate about the axis by
+        -   `numpy.ndarray` --- The axis to rotate about. If :math:`\theta = 0`,
+            then this is hardcoded to be the +x axis
     """
-    Converts a quaternion into an angle and axis of rotation.
-    
-    Args:
-        quat: Can be a list/array in [x, y, z, w] format (ROS/SciPy standard), 
-              or a `numpy-quaternion` object.
-              
-    Returns:
-        angle (float): Rotation angle in radians.
-        axis (np.ndarray): Normalized axis of rotation [x, y, z].
-    """
-    # 1. Handle different quaternion input types
-    if hasattr(quat, 'w') and hasattr(quat, 'x'):
-        # It's a numpy-quaternion object or magnum object
-        x, y, z, w = quat.x, quat.y, quat.z, quat.w
+
+    rot_vec = qt.as_rotation_vector(quat)
+
+    theta = float(np.linalg.norm(rot_vec))
+    if np.abs(theta) < 1e-5:
+        w = np.array([1, 0, 0])
+        theta = 0.0
     else:
-        # Assume it's an array-like [x, y, z, w]
-        x, y, z, w = quat[0], quat[1], quat[2], quat[3]
+        w = rot_vec / theta
 
-    # 2. Normalize to prevent math domain errors with acos
-    norm = math.sqrt(x*x + y*y + z*z + w*w)
-    if norm == 0:
-        return 0.0, np.array([1.0, 0.0, 0.0])
-        
-    x, y, z, w = x/norm, y/norm, z/norm, w/norm
-
-    # 3. Enforce positive 'w' to get the shortest path representation
-    if w < 0:
-        w, x, y, z = -w, -x, -y, -z
-
-    # 4. Calculate angle
-    # min(1.0, w) prevents floating point inaccuracies from throwing a ValueError
-    angle = 2.0 * math.acos(min(1.0, w))
-
-    # 5. Calculate axis
-    den = math.sqrt(1.0 - w*w)
-    if den < 1e-6:
-        # Angle is essentially 0, so the axis doesn't matter
-        axis = np.array([1.0, 0.0, 0.0])
-    else:
-        axis = np.array([x / den, y / den, z / den])
-
-    return angle, axis
+    return (theta, w)
 
 
-def quat_from_angle_axis(angle: float, axis) -> np.ndarray:
+def quat_from_angle_axis(theta: float, axis: np.ndarray) -> qt.quaternion:
+    r"""Creates a quaternion from angle axis format
+
+    :param theta: The angle to rotate about the axis by
+    :param axis: The axis to rotate about
+    :return: The quaternion
     """
-    Converts an angle and axis into a quaternion.
-    
-    Args:
-        angle (float): Rotation angle in radians.
-        axis: The axis of rotation [x, y, z].
-        
-    Returns:
-        np.ndarray: Quaternion in [x, y, z, w] format.
-    """
-    axis = np.array(axis, dtype=float)
-    norm = np.linalg.norm(axis)
-    
-    if norm < 1e-6:
-        # No rotation
-        return np.array([0.0, 0.0, 0.0, 1.0])
-        
-    axis = axis / norm
-    half_angle = angle / 2.0
-    s = math.sin(half_angle)
-    
-    x = axis[0] * s
-    y = axis[1] * s
-    z = axis[2] * s
-    w = math.cos(half_angle)
-    
-    return np.array([x, y, z, w])
+    axis = axis.astype(float)
+    axis /= np.linalg.norm(axis)
+    return qt.from_rotation_vector(theta * axis)
 
 def local_to_global(position, orientation, local_point):
     """
@@ -103,7 +62,7 @@ def local_to_global(position, orientation, local_point):
     Returns:
         np.ndarray: Transformed global coordinates.
     """
-    rotated_point = quaternion.rotate_vectors(orientation, local_point)
+    rotated_point = qt.rotate_vectors(orientation, local_point)
     global_point = rotated_point + position
     return global_point
 
@@ -122,7 +81,7 @@ def global_to_local(position, orientation, global_point):
     """
     translated_point = global_point - position
     inverse_orientation = np.quaternion.conj(orientation)
-    local_point = quaternion.rotate_vectors(inverse_orientation, translated_point)
+    local_point = qt.rotate_vectors(inverse_orientation, translated_point)
     return local_point
 
 

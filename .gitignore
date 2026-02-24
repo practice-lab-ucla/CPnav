@@ -1,9 +1,12 @@
 # Byte-compiled / optimized / DLL files
+*.npz
+*.npy
 *.csv
 notebook/
 notebooks/
 .vscode/
 logs/
+logs
 .env/
 .DS_Store
 data/

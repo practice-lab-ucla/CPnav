@@ -19,7 +19,7 @@ parser.add_argument(
 parser.add_argument(
     "--max_jobs",
     type=int,
-    default=15,
+    default=10,
     help="maximum number of jobs to run in parallel",
 )
 

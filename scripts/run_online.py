@@ -97,6 +97,9 @@ async def main():
             # Special Start
             obs = runner.execute_turnaround(obs)
         elif (decision.action_idx == 0) or (len(sorted_actions) == 0) or (decision.action_idx is None):
+            if runner.cur_node_id == 0 and runner.tried_step0_turnaround:
+                print("Root exhausted and turnaround already attempted. Stopping.")
+                break
             obs = runner.execute_backtrack()
             if obs is None: break
         else:
