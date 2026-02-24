@@ -47,8 +47,10 @@ class Runner:
         # If running in sim, custom_env is None, so it builds ObjectNavEnv.
         if custom_env is not None:
             self.env = custom_env
+            self.is_real_env = True
         else:
             self.env = ObjectNavEnv(self.cfg)
+            self.is_real_env = False
         
         # 2. Init Agent
         api_key = os.getenv("OPENAI_API_KEY")
@@ -284,10 +286,12 @@ class Runner:
         """
         Backtracks to a parent node. Calculates the specific path distance required
         to traverse the tree back to that node and adds it to total distance.
+        Executes a physical action sequence on a real robot, or teleports in sim.
         """
         # 1. Find Target
         local = self.tree.local_backtrack(self.cur_node_id, score_threshold=self.threshold)
         self.tree.mark_tried(self.cur_node_id, 0)
+        
         if local:
             target_step, target_action_id = local
         else:
@@ -297,12 +301,18 @@ class Runner:
                     print("No more actions to backtrack! Exploration exhausted.")
                     return None
                 else:
-                    target_pos = self.tree.get_node_position(0)  # execute the special turnaround action at 0
+                    target_pos = self.tree.get_node_position(0)  # special turnaround action at 0
                     
                     # Calculate distance from current to root (0)
                     backtrack_dist = self.tree.get_path_length(self.cur_node_id, 0)
                     self.traversed_distance += backtrack_dist
-                    obs = self.env.step(target_pos)
+                    
+                    # Physical traverse or Sim teleport
+                    if self.is_real_env:
+                        obs = self._execute_physical_path(self.cur_node_id, 0)
+                    else:
+                        obs = self.env.step(target_pos)
+                        
                     return self.execute_turnaround(obs)
 
             target_step, target_action_id = res
@@ -311,13 +321,15 @@ class Runner:
         self.history.append(f"{self.cur_node_id}->{target_step} {target_action_id}")
 
         # 2. Calculate Traversal Distance for this Backtrack
-        # We use the tree to find the path length from current -> target
         backtrack_dist = self.tree.get_path_length(self.cur_node_id, target_step)
         self.traversed_distance += backtrack_dist
 
-        # 3. Teleport
-        target_pos = self.tree.get_node_position(target_step)
-        obs = self.env.step(target_pos)
+        # 3. Teleport (Sim) vs Traverse (Real)
+        if self.is_real_env:
+            obs = self._execute_physical_path(self.cur_node_id, target_step)
+        else:
+            target_pos = self.tree.get_node_position(target_step)
+            obs = self.env.step(target_pos)
         
         # Update current pointer
         self.cur_node_id = target_step
@@ -329,6 +341,39 @@ class Runner:
         score = self.tree.get_action_score(self.cur_node_id, target_action_id)
         
         return self.execute_move(action, obs, score)
+
+    def _execute_physical_path(self, start_step: int, target_step: int):
+        """
+        Helper method to generate and execute the physical path sequence.
+        """
+        # Split path into going UP to the Lowest Common Ancestor (LCA), then DOWN to target
+        a_to_lca, lca_to_b = self.tree.path_from_a_to_b(start_step, target_step)
+        action_sequence = []
+        
+        # 1. Going UP the tree to LCA (reversing previous steps)
+        if len(a_to_lca) > 1:
+            cmds_up = self.tree.path_to_move_delta(a_to_lca, in_reverse=True)
+            for r, theta in cmds_up:
+                action = PolarAction(r, theta)
+                # Assign the special flag to translate backward without rotating first
+                action.type = "translate_first"
+                action_sequence.append(action)
+                
+        # 2. Going DOWN the tree from LCA to target (driving forward normally)
+        if len(lca_to_b) > 0:
+            # Connect the LCA node to the downward path
+            down_path = [a_to_lca[-1]] + lca_to_b 
+            cmds_down = self.tree.path_to_move_delta(down_path, in_reverse=False)
+            for r, theta in cmds_down:
+                action = PolarAction(r, theta)
+                action_sequence.append(action)
+                
+        # Execute physical sequence if there's distance to cover
+        if action_sequence:
+            return self.env.step(action_sequence)
+        else:
+            from CPnav.env import NULL_ACTION
+            return self.env.step(NULL_ACTION)
     
     def execute_forward(self, action_idx, obs):
         """execute action_idx at current node"""

@@ -1,15 +1,24 @@
+from __future__ import annotations
+
 import os
 import gzip
 import json
 import logging
-import habitat_sim
+
+# Make Simulator dependencies optional!
+try:
+    import habitat_sim
+except ImportError:
+    habitat_sim = None
+
 import numpy as np
 from pathlib import Path
 from typing import Union, Dict, Any, Tuple
 from scipy.spatial.transform import Rotation as R
 
 # Assuming these imports exist in your project structure
-from .sim_wrapper import SimWrapper, PolarAction, TeleopAction, NULL_ACTION
+from .sim_wrapper import SimWrapper
+from .actions import PolarAction, TeleopAction, STOP_ACTION, NULL_ACTION
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 

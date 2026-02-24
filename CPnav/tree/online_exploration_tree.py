@@ -6,7 +6,7 @@ import networkx as nx
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Set, Tuple, Callable
 
-from ..env.sim_wrapper import PolarAction, TeleopAction
+from ..env.actions import PolarAction, TeleopAction
 
 
 StepId = int

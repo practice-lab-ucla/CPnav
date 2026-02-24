@@ -1,5 +1,10 @@
+from __future__ import annotations
+
 import numpy as np
-import habitat_sim
+try:
+    import habitat_sim
+except ImportError:
+    habitat_sim = None
 import cv2
 from typing import Tuple, Optional, List, Dict, Any
 
@@ -69,7 +74,7 @@ class DepthNavigabilityRaycaster:
         Returns:
             List of (radius, theta) tuples.
         """
-        agent_state: habitat_sim.AgentState = obs["agent_state"]
+        agent_state = obs["agent_state"]
         
         # Ensure we have the sensor state (handle if it's missing, though unlikely in Sim)
         if "color_sensor" in agent_state.sensor_states:
