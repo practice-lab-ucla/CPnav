@@ -35,7 +35,7 @@ class Runner:
             mode: Literal["cp_nav", "simple_set", "prompt_set", "ensemble_set"]="cp_nav",
             *,
             alpha=0.3,  
-            custom_env=None  # <-- 1. Add this new parameter
+            custom_env=None
         ):
         # 1. Load Config
         load_dotenv(dotenv_path=".env")

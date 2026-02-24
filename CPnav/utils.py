@@ -9,14 +9,87 @@ import quaternion
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 
-from habitat_sim.utils.common import quat_to_angle_axis
-
 
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BLACK = (0, 0, 0)
 WHITE = (255, 255, 255)
 GREY = (200, 200, 200)
+
+def quat_to_angle_axis(quat):
+    """
+    Converts a quaternion into an angle and axis of rotation.
+    
+    Args:
+        quat: Can be a list/array in [x, y, z, w] format (ROS/SciPy standard), 
+              or a `numpy-quaternion` object.
+              
+    Returns:
+        angle (float): Rotation angle in radians.
+        axis (np.ndarray): Normalized axis of rotation [x, y, z].
+    """
+    # 1. Handle different quaternion input types
+    if hasattr(quat, 'w') and hasattr(quat, 'x'):
+        # It's a numpy-quaternion object or magnum object
+        x, y, z, w = quat.x, quat.y, quat.z, quat.w
+    else:
+        # Assume it's an array-like [x, y, z, w]
+        x, y, z, w = quat[0], quat[1], quat[2], quat[3]
+
+    # 2. Normalize to prevent math domain errors with acos
+    norm = math.sqrt(x*x + y*y + z*z + w*w)
+    if norm == 0:
+        return 0.0, np.array([1.0, 0.0, 0.0])
+        
+    x, y, z, w = x/norm, y/norm, z/norm, w/norm
+
+    # 3. Enforce positive 'w' to get the shortest path representation
+    if w < 0:
+        w, x, y, z = -w, -x, -y, -z
+
+    # 4. Calculate angle
+    # min(1.0, w) prevents floating point inaccuracies from throwing a ValueError
+    angle = 2.0 * math.acos(min(1.0, w))
+
+    # 5. Calculate axis
+    den = math.sqrt(1.0 - w*w)
+    if den < 1e-6:
+        # Angle is essentially 0, so the axis doesn't matter
+        axis = np.array([1.0, 0.0, 0.0])
+    else:
+        axis = np.array([x / den, y / den, z / den])
+
+    return angle, axis
+
+
+def quat_from_angle_axis(angle: float, axis) -> np.ndarray:
+    """
+    Converts an angle and axis into a quaternion.
+    
+    Args:
+        angle (float): Rotation angle in radians.
+        axis: The axis of rotation [x, y, z].
+        
+    Returns:
+        np.ndarray: Quaternion in [x, y, z, w] format.
+    """
+    axis = np.array(axis, dtype=float)
+    norm = np.linalg.norm(axis)
+    
+    if norm < 1e-6:
+        # No rotation
+        return np.array([0.0, 0.0, 0.0, 1.0])
+        
+    axis = axis / norm
+    half_angle = angle / 2.0
+    s = math.sin(half_angle)
+    
+    x = axis[0] * s
+    y = axis[1] * s
+    z = axis[2] * s
+    w = math.cos(half_angle)
+    
+    return np.array([x, y, z, w])
 
 def local_to_global(position, orientation, local_point):
     """
