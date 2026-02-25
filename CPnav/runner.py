@@ -346,7 +346,6 @@ class Runner:
         """
         Helper method to generate and execute the physical path sequence.
         """
-        # Split path into going UP to the Lowest Common Ancestor (LCA), then DOWN to target
         a_to_lca, lca_to_b = self.tree.path_from_a_to_b(start_step, target_step)
         action_sequence = []
         
@@ -354,21 +353,21 @@ class Runner:
         if len(a_to_lca) > 1:
             cmds_up = self.tree.path_to_move_delta(a_to_lca, in_reverse=True)
             for r, theta in cmds_up:
-                action = PolarAction(r, theta)
-                # Assign the special flag to translate backward without rotating first
-                action.type = "translate_first"
+                # INVERT THETA HERE so step() flips it back to normal
+                action = PolarAction(r, -theta)  
+                action.type = "translate_first_unscaled" 
                 action_sequence.append(action)
                 
         # 2. Going DOWN the tree from LCA to target (driving forward normally)
         if len(lca_to_b) > 0:
-            # Connect the LCA node to the downward path
             down_path = [a_to_lca[-1]] + lca_to_b 
             cmds_down = self.tree.path_to_move_delta(down_path, in_reverse=False)
             for r, theta in cmds_down:
-                action = PolarAction(r, theta)
+                # INVERT THETA HERE so step() flips it back to normal
+                action = PolarAction(r, -theta)  
+                action.type = "unscaled" # Safely assign as attribute
                 action_sequence.append(action)
                 
-        # Execute physical sequence if there's distance to cover
         if action_sequence:
             return self.env.step(action_sequence)
         else:

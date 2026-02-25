@@ -17,26 +17,47 @@ GREEN = (0, 255, 0)
 ORANGE = (0, 165, 255)
 
 
-def _compute_intrinsics(full_cfg: Dict[str, Any]) -> Tuple[Tuple[int, int], float]:
+def _compute_intrinsics(full_cfg: Dict[str, Any]) -> Tuple[Tuple[int, int], float, float, float, float]:
     """
-    Extracts resolution and focal length from the clean config structure.
+    Extracts resolution and explicit intrinsics (fx, fy, cx, cy) from the config structure.
+    Falls back to ideal calculation from FOV if not explicitly provided.
     
-    Path: full_cfg -> sim_cfg -> sensor_cfg
+    Path: full_cfg -> sim_cfg -> sensor_cfg / action_proposer_cfg
     """
+    agent_cfg = full_cfg.get("agent_cfg", {})
     sim_cfg = full_cfg["sim_cfg"]
     sensor_cfg = sim_cfg["sensor_cfg"]
+    ap_cfg = agent_cfg.get("action_proposer_cfg", {})
     
     H, W = sensor_cfg["resolution"]
     res_factor = int(sensor_cfg.get("res_factor", 1))
 
-    # Apply downsampling factor
+    # Apply downsampling factor to resolution
     H = H // res_factor
     W = W // res_factor
 
-    fov = float(sensor_cfg["fov"])
-    focal_length = calculate_focal_length(fov, W)
+    # Search for explicit parameters in either config section
+    cfg_fx = ap_cfg.get("fx", ap_cfg.get("focal_length", sensor_cfg.get("fx", sensor_cfg.get("focal_length"))))
+    cfg_fy = ap_cfg.get("fy", ap_cfg.get("focal_length", sensor_cfg.get("fy", sensor_cfg.get("focal_length"))))
+    cfg_cx = ap_cfg.get("cx", sensor_cfg.get("cx"))
+    cfg_cy = ap_cfg.get("cy", sensor_cfg.get("cy"))
 
-    return (H, W), focal_length
+    if cfg_fx is not None and cfg_fy is not None and cfg_cx is not None and cfg_cy is not None:
+        # Scale intrinsics according to the resolution downsample factor
+        fx = float(cfg_fx) / res_factor
+        fy = float(cfg_fy) / res_factor
+        cx = float(cfg_cx) / res_factor
+        cy = float(cfg_cy) / res_factor
+    else:
+        # Fallback to ideal calculation for Sim
+        fov = float(sensor_cfg["fov"])
+        ideal_focal_length = calculate_focal_length(fov, W)
+        fx = ideal_focal_length
+        fy = ideal_focal_length
+        cx = W / 2.0
+        cy = H / 2.0
+
+    return (H, W), fx, fy, cx, cy
 
 
 def _can_project_single(
@@ -45,7 +66,10 @@ def _can_project_single(
     agent_state,
     sensor_state,
     resolution: Tuple[int, int],
-    focal_length: float,
+    fx: float,
+    fy: float,
+    cx: float,
+    cy: float,
     edge_threshold: float,
 ) -> Optional[Tuple[int, int]]:
     """
@@ -55,12 +79,12 @@ def _can_project_single(
     # 3D Point in Agent Frame (Forward is -Z, Right is +X)
     agent_point = np.array([r_i * np.sin(theta_i), 0.0, -r_i * np.cos(theta_i)])
 
+    # Updated API to use explicit intrinsics
     end_px = agent_frame_to_image_coords(
         agent_point,
         agent_state,
         sensor_state,
-        resolution=resolution,
-        focal_length=focal_length,
+        fx, fy, cx, cy,
     )
 
     if end_px is None:
@@ -115,10 +139,10 @@ def project_actions_on_image(
         rgb_image = np.ascontiguousarray(rgb_image, dtype=np.uint8)
 
     # 2. Setup Params
-    resolution, focal_length = _compute_intrinsics(cfg)
+    resolution, fx, fy, cx, cy = _compute_intrinsics(cfg)
     
     # Thresholds from agent_cfg
-    agent_cfg = cfg["agent_cfg"]
+    agent_cfg = cfg.get("agent_cfg", {})
     edge_threshold = float(agent_cfg.get("image_edge_threshold", 0.04))
 
     # Scale visuals relative to 1080p standard
@@ -132,8 +156,7 @@ def project_actions_on_image(
         np.array([0.0, 0.0, 0.0]),
         agent_state,
         sensor_state,
-        resolution=resolution,
-        focal_length=focal_length,
+        fx, fy, cx, cy,
     )
 
     if start_px_float is None:
@@ -161,8 +184,7 @@ def project_actions_on_image(
                 np.array([r_raw * np.sin(theta_raw), 0.0, -r_raw * np.cos(theta_raw)]),
                 agent_state,
                 sensor_state,
-                resolution=resolution,
-                focal_length=focal_length,
+                fx, fy, cx, cy,
             )
             
             if px_raw is not None:
@@ -170,10 +192,6 @@ def project_actions_on_image(
                 
                 # Draw small orange dot
                 cv2.circle(rgb_image, px_int, small_radius, ORANGE, -1)
-                
-                # Optional label "i1", "i2"...
-                # cv2.putText(rgb_image, f"i{i}", (px_int[0]+5, px_int[1]+5), 
-                #             font, font_scale_small, BLACK, thickness_small)
 
     # 5. Draw Valid Refined Actions (Arrows)
     action_counter = 1
@@ -183,7 +201,7 @@ def project_actions_on_image(
         end_px = _can_project_single(
             r_i, theta_i,
             agent_state, sensor_state,
-            resolution, focal_length,
+            resolution, fx, fy, cx, cy,
             edge_threshold
         )
         

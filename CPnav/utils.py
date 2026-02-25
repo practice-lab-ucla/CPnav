@@ -10,7 +10,6 @@ import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 from typing import Tuple
 
-
 GREEN = (0, 255, 0)
 RED = (255, 0, 0)
 BLACK = (0, 0, 0)
@@ -18,15 +17,7 @@ WHITE = (255, 255, 255)
 GREY = (200, 200, 200)
 
 def quat_to_angle_axis(quat: qt.quaternion) -> Tuple[float, np.ndarray]:
-    r"""Converts a quaternion to angle axis format
-
-    :param quat: The quaternion
-    :return:
-        -   `float` --- The angle to rotate about the axis by
-        -   `numpy.ndarray` --- The axis to rotate about. If :math:`\theta = 0`,
-            then this is hardcoded to be the +x axis
-    """
-
+    # ... (Keep existing implementation) ...
     rot_vec = qt.as_rotation_vector(quat)
 
     theta = float(np.linalg.norm(rot_vec))
@@ -38,151 +29,94 @@ def quat_to_angle_axis(quat: qt.quaternion) -> Tuple[float, np.ndarray]:
 
     return (theta, w)
 
-
 def quat_from_angle_axis(theta: float, axis: np.ndarray) -> qt.quaternion:
-    r"""Creates a quaternion from angle axis format
-
-    :param theta: The angle to rotate about the axis by
-    :param axis: The axis to rotate about
-    :return: The quaternion
-    """
+    # ... (Keep existing implementation) ...
     axis = axis.astype(float)
     axis /= np.linalg.norm(axis)
     return qt.from_rotation_vector(theta * axis)
 
 def local_to_global(position, orientation, local_point):
-    """
-    Transforms a local coordinate point to global coordinates based on position and quaternion orientation.
-
-    Args:
-        position (np.ndarray): The global position.
-        orientation (quaternion.quaternion): The quaternion representing the rotation.
-        local_point (np.ndarray): The point in local coordinates.
-
-    Returns:
-        np.ndarray: Transformed global coordinates.
-    """
+    # ... (Keep existing implementation) ...
     rotated_point = qt.rotate_vectors(orientation, local_point)
     global_point = rotated_point + position
     return global_point
 
-
 def global_to_local(position, orientation, global_point):
-    """
-    Transforms a global coordinate point to local coordinates based on position and quaternion orientation.
-
-    Args:
-        position (np.ndarray): The global position.
-        orientation (quaternion.quaternion): The quaternion representing the rotation.
-        global_point (np.ndarray): The point in global coordinates.
-
-    Returns:
-        np.ndarray: Transformed local coordinates.
-    """
+    # ... (Keep existing implementation) ...
     translated_point = global_point - position
     inverse_orientation = np.quaternion.conj(orientation)
     local_point = qt.rotate_vectors(inverse_orientation, translated_point)
     return local_point
 
-
 def quat_to_yaw_habitat(curr_rotation) -> float:
-    """
-    Extract yaw (rotation about +Y) from a Habitat quaternion.
-    Assumes agent is mostly upright (yaw-only for navigation).
-    """
+    # ... (Keep existing implementation) ...
     theta, axis = quat_to_angle_axis(curr_rotation)
-
-    # Same trick you used in SimWrapper._rotate_yaw:
-    # enforce axis.y >= 0 for consistent sign.
     if axis[1] < 0:
         theta = 2.0 * np.pi - theta
-
-    # Wrap to [-pi, pi]
     while theta > math.pi:
         theta -= 2.0 * math.pi
     while theta < -math.pi:
         theta += 2.0 * math.pi
     return float(theta)
 
-
 def calculate_focal_length(fov_degrees, image_width):
-    """
-    Calculates the focal length in pixels based on the field of view and image width.
-
-    Args:
-        fov_degrees (float): Field of view in degrees.
-        image_width (int): The width of the image in pixels.
-
-    Returns:
-        float: The focal length in pixels.
-    """
+    # ... (Keep existing implementation) ...
     fov_radians = np.deg2rad(fov_degrees)
     focal_length = (image_width / 2) / np.tan(fov_radians / 2)
     return focal_length
 
-
-def local_to_image(local_point, resolution, focal_length):
+def local_to_image(local_point, fx, fy, cx, cy):
     """
-    Converts a local 3D point to image pixel coordinates.
-
-    Args:
-        local_point (np.ndarray): The point in local coordinates.
-        resolution (tuple): The image resolution as (height, width).
-        focal_length (float): The focal length of the camera in pixels.
-
-    Returns:
-        tuple: The pixel coordinates (x_pixel, y_pixel).
+    Converts a local 3D point to image pixel coordinates using explicit intrinsics.
     """
-    point_3d = [local_point[0], -local_point[1], -local_point[2]]  # Inconsistency between Habitat camera frame and classical convention
+    point_3d = [local_point[0], -local_point[1], -local_point[2]]  
     if point_3d[2] == 0:
         point_3d[2] = 0.0001
-    x = focal_length * point_3d[0] / point_3d[2]
-    x_pixel = int(resolution[1] / 2 + x)
+        
+    x = fx * point_3d[0] / point_3d[2]
+    x_pixel = int(cx + x)
 
-    y = focal_length * point_3d[1] / point_3d[2]
-    y_pixel = int(resolution[0] / 2 + y)
+    y = fy * point_3d[1] / point_3d[2]
+    y_pixel = int(cy + y)
+    
     return x_pixel, y_pixel
 
-
-def unproject_2d(x_pixel, y_pixel, depth, resolution, focal_length):
+def unproject_2d(x_pixel, y_pixel, depth, fx, fy, cx, cy):
     """
-    Unprojects a 2D pixel coordinate back to 3D space given depth information.
-
-    Args:
-        x_pixel (int): The x coordinate of the pixel.
-        y_pixel (int): The y coordinate of the pixel.
-        depth (float): The depth value at the pixel.
-        resolution (tuple): The image resolution as (height, width).
-        focal_length (float): The focal length of the camera in pixels.
-
-    Returns:
-        tuple: The 3D coordinates (x, y, z).
+    Unprojects a 2D pixel coordinate back to 3D space given depth information and explicit intrinsics.
     """
-    x = (x_pixel - resolution[1] / 2) * depth / focal_length
-    y = (y_pixel - resolution[0] / 2) * depth / focal_length
+    x = (x_pixel - cx) * depth / fx
+    y = (y_pixel - cy) * depth / fy
     return x, -y, -depth
 
-
-def agent_frame_to_image_coords(point, agent_state, sensor_state, resolution, focal_length):
+def agent_frame_to_image_coords(point, agent_state, sensor_state, fx, fy, cx, cy):
     """
-    Converts a point from agent frame to image coordinates.
-
-    Args:
-        point (np.ndarray): The point in agent frame coordinates.
-        agent_state (6dof): The agent's state containing position and rotation.
-        sensor_state (6dof): The sensor's state containing position and rotation.
-        resolution (tuple): The image resolution as (height, width).
-        focal_length (float): The focal length of the camera in pixels.
-
-    Returns:
-        tuple or None: The image coordinates (x_pixel, y_pixel), or None if the point is behind the camera.
+    Converts a point from agent frame to image coordinates using explicit intrinsics.
     """
     global_p = local_to_global(agent_state.position, agent_state.rotation, point)
     camera_pt = global_to_local(sensor_state.position, sensor_state.rotation, global_p)
     if camera_pt[2] > 0:
         return None
-    return local_to_image(camera_pt, resolution, focal_length)
+    return local_to_image(camera_pt, fx, fy, cx, cy)
 
+def depth_to_height(depth_image, fx, fy, cx, cy, camera_position, camera_orientation):
+    """
+    Converts depth image to a height map using explicit camera intrinsics.
+    """
+    img_height, img_width = depth_image.shape
+
+    i_idx, j_idx = np.indices((img_height, img_width))
+    x_prime = (j_idx - cx)
+    y_prime = (i_idx - cy)
+
+    x_local = x_prime * depth_image / fx
+    y_local = y_prime * depth_image / fy
+    z_local = depth_image
+
+    local_points = np.stack((x_local, -y_local, -z_local), axis=-1)
+    global_points = local_to_global(camera_position, camera_orientation, local_points)
+
+    return global_points[:, :, 1]  # Return height map
 
 def put_text_on_image(image, text, location, font=cv2.FONT_HERSHEY_SIMPLEX, text_size=2.7, bg_color=(255, 255, 255), 
                       text_color=(0, 0, 0), text_thickness=3, highlight=True):
@@ -289,35 +223,6 @@ def find_intersections(x1: int, y1: int, x2: int, y2: int, img_width: int, img_h
     if len(intersections) == 2:
         return intersections
     return None
-
-def depth_to_height(depth_image, hfov, camera_position, camera_orientation):
-    """
-    Converts depth image to a height map using camera parameters.
-
-    Args:
-        depth_image (np.ndarray): The input depth image.
-        hfov (float): Horizontal field of view in degrees.
-        camera_position (np.ndarray): The global position of the camera.
-        camera_orientation (quaternion.quaternion): The camera's quaternion orientation.
-
-    Returns:
-        np.ndarray: Global height map derived from depth image.
-    """
-    img_height, img_width = depth_image.shape
-    focal_length_px = img_width / (2 * np.tan(np.radians(hfov / 2)))
-
-    i_idx, j_idx = np.indices((img_height, img_width))
-    x_prime = (j_idx - img_width / 2)
-    y_prime = (i_idx - img_height / 2)
-
-    x_local = x_prime * depth_image / focal_length_px
-    y_local = y_prime * depth_image / focal_length_px
-    z_local = depth_image
-
-    local_points = np.stack((x_local, -y_local, -z_local), axis=-1)
-    global_points = local_to_global(camera_position, camera_orientation, local_points)
-
-    return global_points[:, :, 1]  # Return height map
 
 def log_exception(e):
     """Logs an exception with traceback information."""
