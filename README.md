@@ -27,44 +27,35 @@ conda env create -f environment.yml
 conda activate CPnav
 ```
 
-The `environment.yml` file should include `habitat-sim`, the OpenAI API package, and all Python dependencies required by this project.
 
-If you modify the source code and want the package to be installed in editable mode, make sure the environment includes:
-
-```yaml
-- pip:
-    - -e .
-```
-
-or run manually:
-
-```bash
-pip install -e .
-```
 
 ## OpenAI API Setup
 
 CPNAV uses the OpenAI API for VLM-based action scoring and goal checking.
 
-Set your API key before running experiments:
+Create a `.env` file in the root `CPnav` directory:
 
 ```bash
-export OPENAI_API_KEY="your_api_key_here"
+touch .env
 ```
 
-On Windows PowerShell:
-
-```powershell
-$env:OPENAI_API_KEY="your_api_key_here"
-```
-
-If your code uses a `.env` file, create one in the project root:
+Open the `.env` file and add your OpenAI API key:
 
 ```bash
 OPENAI_API_KEY=your_api_key_here
 ```
 
-Do not commit your `.env` file or API key to GitHub.
+For example:
+
+```bash
+OPENAI_API_KEY=sk-...
+```
+
+Do not commit your `.env` file to GitHub. Make sure `.env` is listed in your `.gitignore` file:
+
+```bash
+.env
+```
 
 ## Data Setup
 
