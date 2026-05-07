@@ -22,7 +22,7 @@ This section includes all setup steps: creating the conda environment, setting u
 
 ### Step 1: Create the Conda Environment
 
-Make sure you are in the root `CPnav` directory:
+Navigate to the directory you want to install the project:
 
 ```bash
 conda env create -f environment.yml
@@ -53,15 +53,10 @@ For example:
 OPENAI_API_KEY=sk-...
 ```
 
-Do not include spaces around the `=` sign.
+Do not include spaces around the `=` sign. Do not commit your `.env` file to GitHub. Make sure `.env` is listed in your `.gitignore` file:
 
-Do not commit your `.env` file to GitHub. Make sure `.env` is listed in your `.gitignore` file:
 
-```bash
-.env
-```
-
-### Dataset Setup
+### Dataset Setup Explanation for Step 3 to 5
 
 This project follows a data setup similar to the one used in the [VLMnav repository](https://github.com/Jirl-upenn/VLMnav/blob/main/readme.md) for the paper [*End-to-End Navigation with Vision-Language Models: Transforming Spatial Reasoning into Question-Answering*](https://arxiv.org/pdf/2411.05755).
 
@@ -97,7 +92,7 @@ Download the GOAT-Bench episode dataset from:
 
 ### Step 5: Organize the Downloaded Dataset
 
-For ObjectNav HM3D v2 episodes and HM3D scene assets, organize the downloaded data as follows:
+For ObjectNav HM3D v2 episodes and HM3D scene assets, it is very important to organize the downloaded data as follows:
 
 ```text
 data/
