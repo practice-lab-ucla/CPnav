@@ -1,0 +1,26 @@
+name: CPnav
+
+channels:
+  - conda-forge
+  - aihabitat
+
+dependencies:
+  - python=3.9
+  - cmake=3.14.0
+  - habitat-sim=0.3.1
+  - withbullet
+  - headless
+  - pip
+
+  - pip:
+      - openai
+      - python-dotenv==1.0.1
+      - networkx==3.2.1
+      - numpy==1.23.5
+      - scipy==1.13.1
+      - matplotlib==3.8.4
+      - opencv_python_headless==4.10.0.84
+      - Pillow==11.0.0
+      - PyYAML==6.0.2
+      - protobuf==3.20.3
+      - -e .
