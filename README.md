@@ -95,6 +95,8 @@ Download the GOAT-Bench episode dataset from:
 
 [Google Drive download link](https://drive.google.com/file/d/1N0UbpXK3v7oTphC4LoDqlNeMHbrwkbPe/view?usp=sharing)
 
+### Step 5: Organize the Downloaded Dataset
+
 For ObjectNav HM3D v2 episodes and HM3D scene assets, organize the downloaded data as follows:
 
 ```text
