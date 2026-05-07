@@ -1,20 +1,8 @@
 # CPNAV
 
-**CPNAV** is a calibrated vision-language navigation framework for object-goal search in unseen indoor environments.
+**CPNAV** is a **Conformal Prediction–augmented Navigation** framework for object-goal search in unseen indoor environments. It uses RGB-D observations to propose collision-free actions, scores them with a vision-language model, and applies conformal prediction to filter unreliable decisions before executing actions through a tree-search policy with backtracking.
 
-The method combines RGB-D based collision-aware action proposal, VLM-based semantic action scoring, tree-search exploration, and conformal prediction calibration. The conformal prediction layer filters low-confidence actions during navigation, improving reliability and path efficiency compared with uncalibrated VLM action selection.
-
-## Overview
-
-CPNAV is designed for map-free object-goal navigation. Given a target object category, such as `chair`, `bed`, or `toilet`, the agent explores an unseen indoor environment using RGB-D observations.
-
-At each step, CPNAV:
-
-1. Builds a local navigability map from depth input.
-2. Generates collision-free candidate motion primitives.
-3. Uses a vision-language model to score candidate actions.
-4. Applies a calibrated conformal prediction threshold to filter unreliable actions.
-5. Executes the best admissible action using a tree-search policy with backtracking.
+![CPNAV Overview](Images/CPnav.png)
 
 ## Installation
 
