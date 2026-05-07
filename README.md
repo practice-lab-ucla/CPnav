@@ -18,7 +18,9 @@ At each step, CPNAV:
 
 ## Installation
 
-Create the conda environment and install all dependencies, including `habitat-sim`.
+This section includes all setup steps: creating the conda environment, setting up the OpenAI API key, and downloading the required datasets.
+
+### Step 1: Create the Conda Environment
 
 Make sure you are in the root `CPnav` directory:
 
@@ -27,9 +29,9 @@ conda env create -f environment.yml
 conda activate CPnav
 ```
 
+This installs all dependencies, including `habitat-sim`.
 
-
-## OpenAI API Setup
+### Step 2: Set Up the OpenAI API Key
 
 CPNAV uses the OpenAI API for VLM-based action scoring and goal checking.
 
@@ -51,19 +53,21 @@ For example:
 OPENAI_API_KEY=sk-...
 ```
 
+Do not include spaces around the `=` sign.
+
 Do not commit your `.env` file to GitHub. Make sure `.env` is listed in your `.gitignore` file:
 
 ```bash
 .env
 ```
 
-## Data Setup
+### Dataset Setup
 
-This project uses a data setup similar to the one described in the [VLMnav repository](https://github.com/Jirl-upenn/VLMnav/blob/main/readme.md) for the paper [*End-to-End Navigation with Vision-Language Models: Transforming Spatial Reasoning into Question-Answering*](https://arxiv.org/pdf/2411.05755).
+This project follows a data setup similar to the one used in the [VLMnav repository](https://github.com/Jirl-upenn/VLMnav/blob/main/readme.md) for the paper [*End-to-End Navigation with Vision-Language Models: Transforming Spatial Reasoning into Question-Answering*](https://arxiv.org/pdf/2411.05755).
 
-CPNAV uses HM3D scenes together with ObjectNav HM3D v2 episode files.
+In particular, CPNAV uses HM3D scenes together with ObjectNav HM3D v2 episode files. The next two steps explain how to download the required scene assets and benchmark episode files.
 
-## Habitat-Matterport 3D Research Dataset
+### Step 3: Download the Habitat-Matterport 3D Research Dataset
 
 You need access to the Habitat-Matterport 3D Research Dataset:
 
@@ -85,7 +89,7 @@ python -m habitat_sim.utils.datasets_download \
   --uids hm3d_val_v0.2
 ```
 
-## Benchmark Datasets
+### Step 4: Download the Benchmark Episode Dataset
 
 Download the GOAT-Bench episode dataset from:
 
@@ -114,9 +118,19 @@ data/
                     └── <scene_id>.semantic.txt
 ```
 
-## Running an Offline Experiment
+## Usage
 
-Example command:
+### Step 1: Activate the Conda Environment
+
+Make sure the conda environment is activated before running any scripts:
+
+```bash
+conda activate CPnav
+```
+
+### Step 2: Run an Offline Navigation Experiment
+
+Run an offline navigation experiment with:
 
 ```bash
 python scripts/run_offline.py \
@@ -127,11 +141,11 @@ python scripts/run_offline.py \
 
 Arguments:
 
-- `--config`: Path to the experiment configuration file.
-- `--log_dir`: Directory where logs and results will be saved.
-- `--episode`: Episode index to run.
+1. `--config`: Path to the experiment configuration file.
+2. `--log_dir`: Directory where logs and results will be saved.
+3. `--episode`: Episode index to run.
 
-## Project Structure
+### Expected Project Layout
 
 A typical project layout is:
 
@@ -155,17 +169,32 @@ CPnav/
 
 ## Method Summary
 
-CPNAV uses a calibrated decision-making pipeline for object-goal navigation:
+CPNAV uses a calibrated decision-making pipeline for object-goal navigation.
 
-- **Action proposal:** Candidate motion primitives are generated from RGB-D observations while enforcing collision safety.
-- **VLM scoring:** A vision-language model scores each action based on semantic relevance to the target object.
-- **Tree search:** The agent maintains a search tree and performs local or global backtracking when needed.
-- **Conformal prediction:** Offline calibration produces a threshold that filters low-confidence actions during online deployment.
-- **Deployment:** The calibrated safety set determines which actions are admissible for execution.
+### Step 1: Action Proposal
+
+Candidate motion primitives are generated from RGB-D observations while enforcing collision safety. The agent uses depth information to identify navigable regions and proposes feasible motion directions.
+
+### Step 2: VLM Scoring
+
+A vision-language model scores each candidate action based on semantic relevance to the target object. These scores estimate which actions are more likely to move the agent toward the goal.
+
+### Step 3: Tree Search
+
+The agent maintains a search tree during exploration. If a branch becomes unpromising or all admissible actions are exhausted, the agent performs local or global backtracking to continue searching from a previous state.
+
+### Step 4: Conformal Prediction
+
+Offline calibration produces a threshold that filters low-confidence actions during online deployment. This helps reduce overconfident but unreliable VLM decisions.
+
+### Step 5: Deployment
+
+During deployment, the calibrated safety set determines which actions are admissible for execution. The agent selects the highest-scoring admissible action and uses backtracking when no reliable action is available.
 
 ## Notes
 
-- Run all commands from the root `CPnav` directory unless stated otherwise.
-- Make sure `OPENAI_API_KEY` is set before running VLM-based experiments.
-- Make sure the HM3D scene files and episode files match the expected `data/` directory structure.
-- Use `conda activate CPnav` before running scripts.
+1. Run all commands from the root `CPnav` directory unless stated otherwise.
+2. Make sure `OPENAI_API_KEY` is set in the `.env` file before running VLM-based experiments.
+3. Make sure the HM3D scene files and episode files match the expected `data/` directory structure.
+4. Use `conda activate CPnav` before running scripts.
+5. Do not commit `.env` or any private API keys to GitHub.
