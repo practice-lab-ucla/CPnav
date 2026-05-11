@@ -105,52 +105,94 @@ data/
 
 ## Usage
 
-### Step 1: Activate the Conda Environment
-
-Make sure the conda environment is activated before running any scripts:
+This repository follows the workflow from the CPNav paper: first run offline
+calibration/search to collect calibration scores, then run the online
+implementation with the selected conformal threshold. The scores gathered
+offline are bounded with the conformal prediction bound using a
+human-specified risk threshold, and the resulting threshold is used by the
+online policy. 
 
 ```bash
 conda activate CPnav
 ```
 
-### Step 2: Run an Offline Navigation Experiment
+### Command 1: Run Offline Calibration for One Episode
 
-Run an offline navigation experiment with:
+Use `scripts/run_offline.py` to run one offline calibration/search episode. This
+records the online trajectory first, then refines the explored tree offline and
+saves the offline score and best path under the log directory.
 
 ```bash
 python scripts/run_offline.py \
   --config config/CPnav_5_nano_101.yaml \
-  --log_dir logs/single_test \
+  --log_dir logs/offline_single \
   --episode 100
 ```
 
-Arguments:
+Key arguments:
 
 1. `--config`: Path to the experiment configuration file.
-2. `--log_dir`: Directory where logs and results will be saved.
+2. `--log_dir`: Directory where logs, images, JSON files, and summaries are saved.
 3. `--episode`: Episode index to run.
 
-### Expected Project Layout
+### Command 2: Run Online Implementation for One Episode
 
-A typical project layout is:
+Use `scripts/run_online.py` to run the online CPNav policy. Pass the calibrated
+threshold from the offline stage with `--threshold`.
 
-```text
-CPnav/
-├── CPnav/
-│   ├── runner.py
-│   └── ...
-├── config/
-│   └── CPnav_5_nano_101.yaml
-├── scripts/
-│   └── run_offline.py
-├── data/
-│   ├── datasets/
-│   └── versioned_data/
-├── logs/
-├── environment.yml
-├── requirements.txt
-└── README.md
+```bash
+python scripts/run_online.py \
+  --config config/CPnav_5_nano_101.yaml \
+  --log_dir logs/online_single \
+  --episode 100 \
+  --threshold 0.059 \
+  --mode cp_nav
 ```
+
+Key arguments:
+
+1. `--threshold`: Calibrated score threshold used by `cp_nav` mode, gathered from the offline calibration results after applying the conformal prediction bound.
+2. `--mode`: Online method to run. Options are `cp_nav`, `simple_set`, `prompt_set`, and `ensemble_set`.
+3. `--alpha`: Prediction-set threshold used by `simple_set` and `ensemble_set`.
+
+To accelerate simulation, batch running is also available and is the recommended
+way to run offline calibration or online evaluation across multiple episodes.
+
+### Command 3: Batch Run Offline Calibration
+
+Use `scripts/batch_run_offline.py` to run offline calibration on many randomly
+sampled episodes in parallel.
+
+```bash
+python scripts/batch_run_offline.py \
+  --config config/CPnav_5_nano_101.yaml \
+  --batch_name offline_calibration \
+  --n_exp 300 \
+  --max_jobs 10 \
+  --seed 42
+```
+
+The batch output is saved to `logs/<batch_name>/`. Each episode writes its own
+run directory, and terminal logs are saved under `logs/<batch_name>/terminal/`.
+
+### Command 4: Batch Run Online Implementation
+
+Use `scripts/batch_run_online.py` to evaluate online navigation on many randomly
+sampled episodes in parallel.
+
+```bash
+python scripts/batch_run_online.py \
+  --config config/CPnav_5_nano_101.yaml \
+  --batch_name online_cp_nav \
+  --n_exp 100 \
+  --max_jobs 15 \
+  --seed 100 \
+  --threshold 0.059 \
+  --mode cp_nav
+```
+
+The online batch runner uses the same online arguments as `run_online.py`,
+including `--threshold`, `--mode`, and `--alpha`.
 
 ## Method Summary
 
