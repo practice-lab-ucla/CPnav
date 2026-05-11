@@ -110,7 +110,8 @@ calibration/search to collect calibration scores, then run the online
 implementation with the selected conformal threshold. The scores gathered
 offline are bounded with the conformal prediction bound using a
 human-specified risk threshold, and the resulting threshold is used by the
-online policy. 
+online policy. All commands should be run from the root `CPnav` directory after
+activating the conda environment:
 
 ```bash
 conda activate CPnav
