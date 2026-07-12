@@ -9,9 +9,11 @@ agent_cfg:
   project: true
   pivot: false
   context_history: 0
+  normalize_action_scores: true
   explore_bias: 4
 
   vlm_score_threshold: 0.5
+  model: gpt-5-nano
 
   meters_per_pixel: 0.005
   grid_spacing_m: 0.7
@@ -32,6 +34,7 @@ agent_cfg:
   num_theta: 60
   image_edge_threshold: 0.04
   turn_around_cooldown: 0
+  query_image_resolution: [640, 360]
 
   agent_radius: 0.1
   clearance_m: 0.05
@@ -85,15 +88,27 @@ sim_cfg:
     fov: 131
     resolution: [1080, 1920] 
   
-  scene_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
-  scene_path_root: data/versioned_data/hm3d-0.2/hm3d/
+  # Scene data is selected by env_cfg.dataset.
 
 env_cfg:
-  dataset_root_path: data/datasets/objectnav_hm3d_v2
+  # ---- DATASET SWITCH ----------------------------------------------------
+  # name: hm3d -> HM3D v2 scenes + ObjectNav HM3D v2 episodes
+  # name: mp3d -> Matterport3D scenes + ObjectNav MP3D episodes
+  dataset:
+    name: hm3d
+    split: val
+    hm3d:
+      scene_dataset_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+      scene_root: data/versioned_data/hm3d-0.2/hm3d
+      episodes_root: data/datasets/objectnav_hm3d_v2
+    mp3d:
+      scene_dataset_config:
+      scene_root: data/MatterPort3D/mp3d
+      episodes_root: data/MatterPort3D/objectnav/mp3d/v1
+
   num_episodes: 1
   max_steps: 20
   log_freq: 1
-  split: val
   success_threshold: 0.3
   instances: 1
   instance: 0
@@ -101,5 +116,3 @@ env_cfg:
   name: default
   port: 5000
   d_goal: 2.0
-
-

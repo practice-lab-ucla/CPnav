@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 try:
     import habitat_sim
     import magnum as mn
@@ -60,7 +61,8 @@ class SimWrapper:
         # ------------------------------------------------------------------
         backend_cfg = habitat_sim.SimulatorConfiguration()
         backend_cfg.scene_id = cfg["scene_path"]
-        backend_cfg.scene_dataset_config_file = cfg["scene_config"]
+        if cfg.get("scene_config"):
+            backend_cfg.scene_dataset_config_file = cfg["scene_config"]
         backend_cfg.enable_physics = True
 
         # Agent configuration
@@ -82,10 +84,31 @@ class SimWrapper:
 
         try:
             self.sim = habitat_sim.Simulator(self.sim_cfg)
+            self._ensure_navmesh(agent_cfg)
             logging.info("Simulator initialized successfully.")
         except Exception as e:
             logging.error(f"Error initializing simulator: {e}")
             raise RuntimeError(f"Could not initialize simulator: {e}") from e
+
+    def _ensure_navmesh(self, agent_cfg) -> None:
+        """Load a sidecar navmesh or recompute one when a dataset has none."""
+        if self.sim.pathfinder.is_loaded:
+            return
+
+        navmesh = self.scene_path.replace(".basis.glb", ".basis.navmesh").replace(
+            ".glb", ".navmesh"
+        )
+        if os.path.exists(navmesh):
+            self.sim.pathfinder.load_nav_mesh(navmesh)
+            logging.info("Loaded navmesh %s", os.path.basename(navmesh))
+
+        if not self.sim.pathfinder.is_loaded:
+            logging.warning("No navmesh found; recomputing from scene geometry.")
+            settings = habitat_sim.NavMeshSettings()
+            settings.set_defaults()
+            settings.agent_radius = agent_cfg.radius
+            settings.agent_height = agent_cfg.height
+            self.sim.recompute_navmesh(self.sim.pathfinder, settings)
 
     # ----------------------------------------------------------------------
     # Sensor and agent configuration helpers
@@ -359,4 +382,3 @@ class SimWrapper:
         observation = self.sim.get_sensor_observations(0)
         observation["agent_state"] = agent.get_state()
         return observation
-

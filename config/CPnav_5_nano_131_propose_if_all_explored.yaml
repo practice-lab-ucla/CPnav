@@ -9,8 +9,20 @@ env_cls: ObjectNavEnv
 # 2. ENVIRONMENT CONFIGURATION (Dataset & Episode Control)
 # ==============================================================================
 env_cfg:
-  dataset_root_path: data/datasets/objectnav_hm3d_v2
-  split: val
+  # ---- DATASET SWITCH ----------------------------------------------------
+  # name: hm3d -> HM3D v2 scenes + ObjectNav HM3D v2 episodes
+  # name: mp3d -> Matterport3D scenes + ObjectNav MP3D episodes
+  dataset:
+    name: hm3d
+    split: val
+    hm3d:
+      scene_dataset_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+      scene_root: data/versioned_data/hm3d-0.2/hm3d
+      episodes_root: data/datasets/objectnav_hm3d_v2
+    mp3d:
+      scene_dataset_config:
+      scene_root: data/MatterPort3D/mp3d
+      episodes_root: data/MatterPort3D/objectnav/mp3d/v1
   
   # Episode Control
   num_episodes: 1
@@ -30,9 +42,7 @@ env_cfg:
 # 3. SIMULATOR CONFIGURATION (Physics & Sensors)
 # ==============================================================================
 sim_cfg:
-  # Scene Data
-  scene_path_root: data/versioned_data/hm3d-0.2/hm3d/
-  scene_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+  # Scene data is selected by env_cfg.dataset.
   
   # Agent Physics (Sim side)
   agent_height: 0.9

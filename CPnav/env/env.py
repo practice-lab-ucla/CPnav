@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import os
+import glob
 import gzip
 import json
 import logging
@@ -59,41 +59,107 @@ class ObjectNavEnv:
         self.step_count = 0
 
     def _resolve_paths(self):
-        """Resolves relative paths in config to absolute paths."""
-        # Sim paths
-        self.sim_cfg["scene_path_root"] = str((REPO_ROOT / self.sim_cfg["scene_path_root"]).resolve())
-        self.sim_cfg["scene_config"] = str((REPO_ROOT / self.sim_cfg["scene_config"]).resolve())
+        """Resolve dataset-specific paths and preserve legacy config keys."""
+        self.dataset_cfg = self._resolve_dataset_cfg()
 
-        # Dataset path
-        self.env_cfg["dataset_root_path"] = str((REPO_ROOT / self.env_cfg["dataset_root_path"]).resolve())
+        for key in ("episodes_root", "scene_root", "scene_dataset_config"):
+            value = self.dataset_cfg.get(key)
+            if value:
+                self.dataset_cfg[key] = str((REPO_ROOT / value).resolve())
+
+        # Keep the previous key names populated so older code/logs still work.
+        self.env_cfg["split"] = self.dataset_cfg["split"]
+        self.env_cfg["dataset_root_path"] = self.dataset_cfg["episodes_root"]
+        self.sim_cfg["scene_path_root"] = self.dataset_cfg["scene_root"]
+        self.sim_cfg["scene_config"] = self.dataset_cfg.get("scene_dataset_config") or ""
+
+    def _resolve_dataset_cfg(self) -> Dict[str, Any]:
+        """Flatten the active dataset block, matching fai-nav's hm3d/mp3d switch."""
+        ds = self.env_cfg.get("dataset")
+        if isinstance(ds, dict):
+            name = (ds.get("name") or "hm3d").lower()
+            active = ds.get(name)
+            if not isinstance(active, dict):
+                if "episodes_root" in ds and "scene_root" in ds:
+                    merged = dict(ds)
+                    merged["name"] = name
+                    merged.setdefault("split", self.env_cfg.get("split", "val"))
+                    return merged
+                raise KeyError(
+                    f"dataset.name='{name}' but no env_cfg.dataset.{name} block found."
+                )
+
+            merged = {
+                k: v for k, v in ds.items()
+                if k not in ("hm3d", "mp3d")
+            }
+            merged.update(active)
+            merged["name"] = name
+            merged.setdefault("split", self.env_cfg.get("split", "val"))
+            return merged
+
+        # Legacy CPnav config shape: HM3D paths split between env_cfg and sim_cfg.
+        return {
+            "name": "hm3d",
+            "split": self.env_cfg.get("split", "val"),
+            "episodes_root": self.env_cfg["dataset_root_path"],
+            "scene_root": self.sim_cfg["scene_path_root"],
+            "scene_dataset_config": self.sim_cfg.get("scene_config"),
+        }
 
     def _initialize_experiment(self) -> None:
         """Loads all episode JSONs from the content folder."""
-        split = self.env_cfg["split"]
-        dataset_root = Path(self.env_cfg['dataset_root_path'])
-        content_path = dataset_root / split / "content"
+        split = self.dataset_cfg["split"]
+        dataset_root = Path(self.dataset_cfg["episodes_root"])
+        split_path = dataset_root / split
+        files = sorted((split_path / "content").glob("*.json.gz"))
+        if not files:
+            files = sorted(split_path.glob("*.json.gz"))
+        if not files:
+            raise FileNotFoundError(f"Dataset episodes not found under: {split_path}")
 
-        if not content_path.exists():
-            raise FileNotFoundError(f"Dataset content not found at: {content_path}")
+        logging.info(f"Loading episodes from {split_path}...")
 
-        logging.info(f"Loading episodes from {content_path}...")
-
-        # Iterate over compressed JSONs
-        for file_path in sorted(content_path.glob("*.json.gz")):
+        for file_path in files:
             with gzip.open(file_path, "rt") as gz:
                 data = json.load(gz)
-                
-                # The filename (minus extensions) is usually the scene hash
-                scene_hash = file_path.name.split(".")[0]
-                
-                # Store goals and episodes
-                self.goals[scene_hash] = data["goals_by_category"]
-                self.all_episodes.extend(data["episodes"])
+
+            # The content filename is usually the short scene id. Aggregate split
+            # files still work because goal lookup is only used for run naming.
+            scene_hash = file_path.name.removesuffix(".json.gz")
+            self.goals[scene_hash] = data.get("goals_by_category", {})
+            self.all_episodes.extend(data.get("episodes", []))
 
         self.num_episodes = len(self.all_episodes)
+        if self.num_episodes == 0:
+            raise RuntimeError(f"No episodes found under: {split_path}")
         logging.info(
-            f"Initialized ObjectNavEnv with {self.num_episodes} episodes (split={split})."
+            f"Initialized ObjectNavEnv with {self.num_episodes} episodes "
+            f"(dataset={self.dataset_cfg['name']}, split={split})."
         )
+
+    def _scene_glb(self, raw_scene_id: str) -> str:
+        """Resolve Habitat episode scene_id to an absolute .glb path."""
+        scene_root = Path(self.dataset_cfg["scene_root"])
+        split = self.dataset_cfg["split"]
+        parts = raw_scene_id.split("/")
+        scene_folder, glb_name = parts[-2], parts[-1]
+
+        # HM3D: scene_root/<split>/<scene_folder>/<scene>.basis.glb
+        candidate = scene_root / split / scene_folder / glb_name
+        if candidate.exists():
+            return str(candidate)
+
+        # MP3D: scene_root/<scene_folder>/<scene>.glb
+        flat = scene_root / scene_folder / glb_name
+        if flat.exists():
+            return str(flat)
+
+        hits = glob.glob(str(scene_root / "**" / glb_name), recursive=True)
+        if hits:
+            return hits[0]
+
+        raise FileNotFoundError(f"Could not locate scene glb for {raw_scene_id}")
 
     def initialize_episode(self, episode_ndx: int) -> str:
         """
@@ -102,28 +168,18 @@ class ObjectNavEnv:
         """
         episode = self.all_episodes[episode_ndx]
         
-        # Parse Scene ID from HM3D format: "hm3d/val/HASH/HASH.basis.glb"
-        # We split by '/' to get parts.
+        # Parse scene ids such as:
+        # HM3D: hm3d_v0.2/val/00877-4ok3usBNeis/4ok3usBNeis.basis.glb
+        # MP3D: mp3d/2azQ1b91cZZ/2azQ1b91cZZ.glb
         raw_scene_id = episode["scene_id"]
         scene_parts = raw_scene_id.split("/") 
-        
-        # Expecting parts: ['hm3d', 'val', 'HASH', 'HASH.basis.glb']
-        # Or relative: ['val', 'HASH', 'HASH.basis.glb']
-        # We grab the hash folder and the filename.
         scene_hash = scene_parts[-2]  # The folder name (e.g., 00877-4ok3usBNeis)
-        glb_filename = scene_parts[-1] # The file name
 
         # 1. Configure Sim for this Scene
         # Note: scene_id in sim_cfg is often used for logging or display
         self.sim_cfg["scene_id"] = scene_hash 
 
-        # Construct full path to the GLB
-        self.sim_cfg["scene_path"] = os.path.join(
-            self.sim_cfg["scene_path_root"], 
-            self.env_cfg['split'], 
-            scene_hash, 
-            glb_filename
-        )
+        self.sim_cfg["scene_path"] = self._scene_glb(raw_scene_id)
 
         # 2. Re-initialize Simulator
         if self.simWrapper:

@@ -48,7 +48,7 @@ Do not include spaces around the `=` sign. Do not commit your `.env` file to Git
 
 This project follows a data setup similar to the one used in the [VLMnav repository](https://github.com/Jirl-upenn/VLMnav/blob/main/readme.md) for the paper [*End-to-End Navigation with Vision-Language Models: Transforming Spatial Reasoning into Question-Answering*](https://arxiv.org/pdf/2411.05755).
 
-In particular, CPNAV uses HM3D scenes together with ObjectNav HM3D v2 episode files. The next two steps explain how to download the required scene assets and benchmark episode files.
+By default, CPNAV uses HM3D scenes together with ObjectNav HM3D v2 episode files. The configs also include a dataset switch for MP3D/Matterport3D episodes when the MP3D data is present under `data/MatterPort3D`.
 
 ### Step 3: Download the Habitat-Matterport 3D Research Dataset
 
@@ -72,11 +72,11 @@ python -m habitat_sim.utils.datasets_download \
   --uids hm3d_val_v0.2
 ```
 
-### Step 4: Download the Benchmark Episode Dataset
+### Step 4: Download the ObjectNav Episode Dataset
 
-Download the GOAT-Bench episode dataset from:
+Download the ObjectNav HM3D v2 episode dataset from:
 
-[Google Drive download link](https://drive.google.com/file/d/1N0UbpXK3v7oTphC4LoDqlNeMHbrwkbPe/view?usp=sharing)
+[https://dl.fbaipublicfiles.com/habitat/data/datasets/objectnav/hm3d/v2/objectnav_hm3d_v2.zip](https://dl.fbaipublicfiles.com/habitat/data/datasets/objectnav/hm3d/v2/objectnav_hm3d_v2.zip)
 
 ### Step 5: Organize the Downloaded Dataset
 
@@ -84,6 +84,18 @@ For ObjectNav HM3D v2 episodes and HM3D scene assets, it is very important to or
 
 ```text
 data/
+├── MatterPort3D/
+│   ├── mp3d/
+│   │   └── <scene_id>/
+│   │       └── <scene_id>.glb
+│   └── objectnav/
+│       └── mp3d/
+│           └── v1/
+│               └── val/
+│                   ├── val.json.gz
+│                   └── content/
+│                       └── *.json.gz
+│
 ├── datasets/
 │   └── objectnav_hm3d_v2/
 │       └── val/
@@ -101,6 +113,14 @@ data/
                     ├── <scene_id>.navmesh
                     ├── <scene_id>.semantic.glb
                     └── <scene_id>.semantic.txt
+```
+
+To switch between HM3D and MP3D, edit the experiment config:
+
+```yaml
+env_cfg:
+  dataset:
+    name: hm3d  # or mp3d
 ```
 
 ## Usage
