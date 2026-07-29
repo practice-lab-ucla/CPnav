@@ -103,7 +103,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     root_directory = args.exp_dir
-    results_df = process_experiments(root_directory)
+    results_df = process_experiments(f"{root_directory}/episodes")
     if args.out_dir is None:
         out_file = os.path.join(args.exp_dir, "results.csv")
     else:

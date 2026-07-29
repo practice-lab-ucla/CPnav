@@ -261,9 +261,10 @@ def main():
     if not folder.exists():
         raise SystemExit(f"Folder does not exist: {folder}")
 
+    # 1. Run the async check
     results = asyncio.run(run(folder, args.model, args.concurrency))
 
-    # Filter: goal not found (or low confidence)
+    # 2. Filter: Identify False Positives (Goal not found or low confidence)
     bad_episode_ids = []
     for r in results:
         if r.episode_id < 0:
@@ -271,17 +272,29 @@ def main():
         if (not r.found) or (r.confidence < args.min_confidence):
             bad_episode_ids.append(r.episode_id)
 
-    bad_episode_ids = sorted(set(bad_episode_ids))
-    print(json.dumps(bad_episode_ids, indent=2))
+    # Sort and remove duplicates
+    bad_episode_ids = sorted(list(set(bad_episode_ids)))
 
+    # 3. Handle output directories
     fp_dir = folder / "fp"
+    fp_dir.mkdir(parents=True, exist_ok=True)
+
+    # 4. Write the False Positive Index List to the experiment folder
+    fp_index_path = folder / "false_positive.txt"
+    fp_index_path.write_text(json.dumps(bad_episode_ids, indent=2))
+    
+    # 5. Copy images and save full results
     n_copied = copy_false_positive_images(folder, bad_episode_ids, fp_dir)
-    print(f"Copied {n_copied} false-positive images to: {fp_dir}")
+    
+    print(f"\n--- Summary ---")
+    print(f"False Positive IDs: {bad_episode_ids}")
+    print(f"Total FP found: {len(bad_episode_ids)}")
+    print(f"Images copied to: {fp_dir}")
+    print(f"Index list saved to: {fp_index_path}")
 
-    # Always save JSON (default next to folder)
+    # Save the full detailed results log
     out_path = resolve_output_json_path(folder, "")
-
-    out = [
+    detailed_out = [
         {
             "episode_id": r.episode_id,
             "goal": r.goal,
@@ -291,9 +304,8 @@ def main():
         }
         for r in results
     ]
-
-    out_path.write_text(json.dumps(out, indent=2))
-    print(f"\nSaved detailed results to: {out_path}")
+    out_path.write_text(json.dumps(detailed_out, indent=2))
+    print(f"Detailed log saved to: {out_path}")
 
 
 

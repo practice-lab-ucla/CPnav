@@ -1,9 +1,11 @@
 import os
 import time
+import yaml
 import numpy as np
 import subprocess
 from datetime import datetime
 
+from CPnav.env import ObjectNavEnv
 
 import argparse
 
@@ -51,6 +53,21 @@ parser.add_argument(
     default=[200, 222],
 )
 
+parser.add_argument(
+    "--log_folder",
+    type=str,
+    default="logs/mp3d",
+    help="Only sample episodes whose goal object_category is in this list",
+)
+
+parser.add_argument(
+    "--goal_categories",
+    type=str,
+    nargs="+",
+    default=["chair", "table", "plant", "sofa", "bed", "toilet", "tv_monitor"],
+    help="Only sample episodes whose goal object_category is in this list",
+)
+
 args = parser.parse_args()
 
 MAX_JOBS = args.max_jobs
@@ -59,18 +76,30 @@ N_EXPERIMENTS = args.n_exp
 CONFIG = args.config
 SCRIPT = "scripts/run_offline.py"
 forbidden_low, forbidden_high = args.forbidden_range
+goal_categories = set(args.goal_categories)
 
+with open(CONFIG, "r") as f:
+    cfg = yaml.safe_load(f)
+env = ObjectNavEnv(cfg)
+
+all_episodes_filtered = [
+    i for i, ep in enumerate(env.all_episodes)
+    if ep["object_category"] in goal_categories and not (forbidden_low < i < forbidden_high)
+]
+if N_EXPERIMENTS > len(all_episodes_filtered):
+    raise ValueError(
+        f"--n_exp {N_EXPERIMENTS} exceeds the {len(all_episodes_filtered)} episodes "
+        f"available for goal categories {sorted(goal_categories)} (after excluding the forbidden range)."
+    )
 np.random.seed(SEED)
-all_episodes = np.arange(0,1000)
-all_episodes_filtered = [e for e in all_episodes if not (forbidden_low < e < forbidden_high)]
 EPISODES = np.random.choice(all_episodes_filtered, size=N_EXPERIMENTS, replace=False).tolist()
 
 # Create timestamped log directory
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 if args.batch_name == "" or args.batch_name is None:
-    log_path = f"logs/batch_{timestamp}"
+    log_path = f"{args.log_folder}/batch_{timestamp}"
 else:
-    log_path = f"logs/{args.batch_name}"
+    log_path = f"{args.log_folder}/{args.batch_name}"
 
 term_path = os.path.join(log_path, "terminal")
 os.makedirs(term_path, exist_ok=True)

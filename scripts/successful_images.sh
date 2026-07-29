@@ -16,7 +16,7 @@ echo "Processing episodes in: $ROOT_DIR"
 echo "Images will be saved to: $TARGET_DIR"
 
 # Find and process the images
-find "$ROOT_DIR" -maxdepth 3 -path "*/terminal/*.png" -exec bash -c '
+find "$ROOT_DIR" -maxdepth 4 -path "*/terminal/*.png" -exec bash -c '
     filepath="$1"
     target_dir="$2"
     

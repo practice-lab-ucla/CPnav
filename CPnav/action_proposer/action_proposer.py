@@ -34,6 +34,7 @@ class ActionProposer:
         self.clip_frac = self.ap_cfg["clip_frac"]
         self.hard_spacing = np.deg2rad(self.ap_cfg["hard_spacing_deg"])
         self.propose_if_all_explored = self.ap_cfg.get("propose_if_all_explored", False)
+        self.enable_voxel = self.ap_cfg.get("enable_voxel", True)
 
         # Exploration Bias
         if self.ap_cfg.get("enable", False):
@@ -59,7 +60,10 @@ class ActionProposer:
         a_initial = self._build_initial_actions(obs)
         
         # 2. Check against Voxel Map (Explored vs Unexplored)
-        a_checked = self._check_explored_status(a_initial, obs["agent_state"], voxel)
+        if self.enable_voxel:
+            a_checked = self._check_explored_status(a_initial, obs["agent_state"], voxel)
+        else:
+            a_checked = [(r, theta, True) for r, theta in a_initial]
         
         # 3. Filter and refine based on spacing/bias
         a_final = self._refine_actions(a_checked)

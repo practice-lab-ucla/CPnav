@@ -1,8 +1,11 @@
 import os
 import time
+import yaml
 import numpy as np
 import subprocess
 from datetime import datetime
+
+from CPnav.env import ObjectNavEnv
 
 # --- Configuration ---
 SCRIPT = "scripts/run_online.py"
@@ -68,6 +71,21 @@ parser.add_argument(
     help="Threshold used for constructing prediction set, only used if mode = simple_set or ensemble_set",
 )
 
+parser.add_argument(
+    "--log_folder",
+    type=str,
+    default="logs/mp3d",
+    help="Only sample episodes whose goal object_category is in this list",
+)
+
+parser.add_argument(
+    "--goal_categories",
+    type=str,
+    nargs="+",
+    default=["chair", "table", "plant", "sofa", "bed", "toilet", "tv_monitor"],
+    help="Only sample episodes whose goal object_category is in this list",
+)
+
 args = parser.parse_args()
 
 MAX_JOBS = args.max_jobs
@@ -75,20 +93,37 @@ SEED = args.seed
 N_EXPERIMENTS = args.n_exp
 THR = args.threshold
 CONFIG = args.config
+goal_categories = set(args.goal_categories)
+
+with open(CONFIG, "r") as f:
+    cfg = yaml.safe_load(f)
+env = ObjectNavEnv(cfg)
+
+eligible_episodes = [
+    i for i, ep in enumerate(env.all_episodes) if ep["object_category"] in goal_categories
+]
+if N_EXPERIMENTS > len(eligible_episodes):
+    raise ValueError(
+        f"--n_exp {N_EXPERIMENTS} exceeds the {len(eligible_episodes)} episodes "
+        f"available for goal categories {sorted(goal_categories)}."
+    )
 
 np.random.seed(SEED)
-EPISODES = np.random.choice(np.arange(0, 1000), size=N_EXPERIMENTS, replace=False).tolist()
+EPISODES = np.random.choice(eligible_episodes, size=N_EXPERIMENTS, replace=False).tolist()
 
 # Create timestamped log directory
 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
 if (args.batch_name == "") or (args.batch_name is None):
-    log_path = f"logs/batch_{timestamp}"
+    log_path = f"{args.log_folder}/batch_{timestamp}"
 else:
-    log_path = f"logs/{args.batch_name}"
+    log_path = f"{args.log_folder}/{args.batch_name}"
 
 term_path = os.path.join(log_path, "terminal")
 os.makedirs(term_path, exist_ok=True)
+
+episode_path = os.path.join(log_path, "episodes")
+os.makedirs(episode_path, exist_ok=True)
 
 def run_experiments():
     processes = []
@@ -109,7 +144,7 @@ def run_experiments():
             proc = subprocess.Popen(
                 ["python", SCRIPT, 
                     "--config", CONFIG, 
-                    "--log_dir", log_path, 
+                    "--log_dir", episode_path, 
                     "--episode", str(ep),
                     "--threshold", str(THR),
                     "--mode", str(args.mode),

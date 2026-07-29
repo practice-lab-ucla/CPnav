@@ -1,0 +1,132 @@
+# ==============================================================================
+# 1. GLOBAL TASK SETTINGS
+# ==============================================================================
+task: ObjectNav
+agent_cls: ObjectNavAgent
+env_cls: ObjectNavEnv
+
+# ==============================================================================
+# 2. ENVIRONMENT CONFIGURATION (Dataset & Episode Control)
+# ==============================================================================
+env_cfg:
+  # ---- DATASET SWITCH ----------------------------------------------------
+  # name: hm3d -> HM3D v2 scenes + ObjectNav HM3D v2 episodes
+  # name: mp3d -> Matterport3D scenes + ObjectNav MP3D episodes
+  dataset:
+    name: mp3d
+    split: val
+    hm3d:
+      scene_dataset_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+      scene_root: data/versioned_data/hm3d-0.2/hm3d
+      episodes_root: data/datasets/objectnav_hm3d_v2
+    mp3d:
+      scene_dataset_config:
+      scene_root: data/MatterPort3D/mp3d
+      episodes_root: data/MatterPort3D/objectnav/mp3d/v1
+
+  # Episode Control
+  num_episodes: 1
+  max_steps: 200
+  success_threshold: 0.3
+  d_goal: 2.0
+
+  # Runtime / Logging
+  log_freq: 1
+  instances: 1
+  instance: 0
+  parallel: false
+  name: default
+  port: 5000
+
+# ==============================================================================
+# 3. SIMULATOR CONFIGURATION (Physics & Sensors)
+# ==============================================================================
+sim_cfg:
+  # Scene data is selected by env_cfg.dataset.
+
+  # Agent Physics (Sim side)
+  agent_height: 0.9
+  agent_radius: 0.1
+  allow_slide: true
+  use_goal_image_agent: false
+
+  # Sensor Setup
+  sensor_cfg:
+    height: 0.9
+    pitch: -0.45
+    fov: 101
+    resolution: [1080, 1920]
+    res_factor: 1
+
+# ==============================================================================
+# 4. AGENT CONFIGURATION (Logic & Behavior)
+# ==============================================================================
+agent_cfg:
+  # --- General Mode Settings ---
+  navigability_mode: depth_sensor  # ['none', 'depth_estimate', 'segmentation', 'depth_sensor']
+  Depth_aware: true
+  project: true
+  pivot: false
+  context_history: 0
+  normalize_action_scores: true
+
+  # --- Physical & Safety Constraints (Planner side) ---
+  agent_radius: 0.1
+  clearance_m: 0.05
+  navigability_height_threshold: 0.2
+  stop_margin_m: 0.05  # Moved from proposer if applicable, or keep in proposer
+
+  # --- Movement & Action Space ---
+  max_action_dist: 1.7
+  min_action_dist: 0.75
+  stopping_action_dist: 1.3
+  default_action: 0.0
+  turn_around_cooldown: 0
+  clip_frac: 1.0
+
+  # --- Mapping & Projection ---
+  meters_per_pixel: 0.005
+  grid_spacing_m: 0.5
+  map_scale: 100
+  image_edge_threshold: 0.04
+
+  # --- Perception (VLM) ---
+  vlm_score_threshold: 0.5
+  model: gpt-5-nano
+
+  # --- Exploration Heuristics ---
+  explore_bias: 4
+  discourage_ratio: 0.4
+
+  # --- Rotation / Spacing Defaults ---
+  spacing_ratio: 360
+  hard_spacing: 0.349066
+  num_theta: 60
+
+  query_image_resolution: [640, 360]
+
+  # ============================================================================
+  # Action Proposer (Ray Casting & Detailed Navigation)
+  # ============================================================================
+  action_proposer_cfg:
+    enable: true
+
+    # Dimensions
+    obstacle_height_m: 0.10
+    corridor_half_width_m: 0.15
+    stop_margin_m: 0.05
+
+    # Ray Casting
+    ray_max_range_m: 6.0
+    stride: 4
+
+    # Action Generation
+    num_theta: 100
+    hard_spacing_deg: 20.0
+    max_action_dist: 1.7
+    min_action_dist: 0.75
+    clip_frac: 1.0
+
+    # Scoring & Filters
+    weight: 1.0   # bigger => allow more close angles if unexplored
+    image_edge_threshold: 0.04    # reject endpoints near borders
