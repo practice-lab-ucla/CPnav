@@ -21,8 +21,8 @@ env_cfg:
       episodes_root: data/datasets/objectnav_hm3d_v2
     mp3d:
       scene_dataset_config:
-      scene_root: data/MatterPort3D/mp3d
-      episodes_root: data/MatterPort3D/objectnav/mp3d/v1
+      scene_root: data/datasets/scene_datasets/mp3d
+      episodes_root: data/datasets/objectnav/mp3d/v1
 
   # Episode Control
   num_episodes: 1
@@ -110,6 +110,7 @@ agent_cfg:
   # ============================================================================
   action_proposer_cfg:
     enable: true
+    propose_if_all_explored: false
 
     # Dimensions
     obstacle_height_m: 0.10

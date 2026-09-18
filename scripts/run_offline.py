@@ -100,7 +100,7 @@ def parse_args():
     parser.add_argument(
         "--config",
         type=str,
-        default="config/CPnav_4o_mini.yaml",
+        default="config/CPnav_5_nano_131.yaml",
         help="Path to config YAML file",
     )
 

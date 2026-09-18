@@ -446,7 +446,7 @@ def eval_vlm_response(response: str) -> dict:
             return json.loads(clean_block)  # try proper JSON first
         except json.JSONDecodeError:
             return ast.literal_eval(clean_block)  # fallback for Python dict
-    except (ValueError, IndexError) as e:
+    except (ValueError, IndexError, SyntaxError) as e:
         logging.error(f"Error parsing response: {e}")
         print()
         print(response)

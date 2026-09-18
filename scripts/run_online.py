@@ -16,7 +16,7 @@ def parse_args():
     parser.add_argument(
         "--config",
         type=str,
-        default="config/CPnav_4o_mini.yaml",
+        default="config/CPnav_5_nano_131.yaml",
         help="Path to config YAML file",
     )
 
@@ -93,18 +93,21 @@ async def main():
         # 5. Act
         if decision.action_idx is None:
             print("Warnning GPT does not give correct action")
-        if (decision.action_idx == 0) and (runner.cur_node_id == 0):
-            # Special Start
+
+        # Route the VLM's choice, enforcing the CPNAV safety set (Eq. 14) on
+        # forward moves: a below-threshold action is inadmissible and is never
+        # executed directly (see Runner.route_decision).
+        kind, idx = runner.route_decision(decision.action_idx, len(sorted_actions))
+
+        if kind == "turnaround":
             obs = runner.execute_turnaround(obs)
-        elif (decision.action_idx == 0) or (len(sorted_actions) == 0) or (decision.action_idx is None):
-            if runner.cur_node_id == 0 and runner.tried_step0_turnaround:
-                print("Root exhausted and turnaround already attempted. Stopping.")
-                break
+        elif kind == "stop":
+            print("Root exhausted and turnaround already attempted. Stopping.")
+            break
+        elif kind == "backtrack":
             obs = runner.execute_backtrack()
             if obs is None: break
-        else:
-            # Normal Move
-            idx = int(max(1, min(decision.action_idx, len(sorted_actions))))
+        else:  # "forward"
             obs = runner.execute_forward(idx, obs)
     
     runner.record_failure(obs)

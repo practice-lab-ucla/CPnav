@@ -44,11 +44,11 @@ OPENAI_API_KEY=sk-...
 Do not include spaces around the `=` sign. Do not commit your `.env` file to GitHub. Make sure `.env` is listed in your `.gitignore` file:
 
 
-### Dataset Setup Explanation for Step 3 to 5
+### Dataset Setup Explanation for Step 3 to 6
 
 This project follows a data setup similar to the one used in the [VLMnav repository](https://github.com/Jirl-upenn/VLMnav/blob/main/readme.md) for the paper [*End-to-End Navigation with Vision-Language Models: Transforming Spatial Reasoning into Question-Answering*](https://arxiv.org/pdf/2411.05755).
 
-By default, CPNAV uses HM3D scenes together with ObjectNav HM3D v2 episode files. The configs also include a dataset switch for MP3D/Matterport3D episodes when the MP3D data is present under `data/MatterPort3D`.
+By default, CPNAV uses HM3D scenes with ObjectNav HM3D v2 episodes (Steps 3–5). The configs also include a dataset switch for MP3D/Matterport3D (Step 6), loaded from `data/datasets/scene_datasets/mp3d` with episodes under `data/datasets/objectnav/mp3d/v1`.
 
 ### Step 3: Download the Habitat-Matterport 3D Research Dataset
 
@@ -80,42 +80,54 @@ Download the ObjectNav HM3D v2 episode dataset from:
 
 ### Step 5: Organize the Downloaded Dataset
 
-For ObjectNav HM3D v2 episodes and HM3D scene assets, it is very important to organize the downloaded data as follows:
+Organize both datasets under `data/` exactly as below — these are the paths the
+configs (`config/CPnav_5_nano_131*.yaml`) read from:
 
 ```text
 data/
-├── MatterPort3D/
-│   ├── mp3d/
-│   │   └── <scene_id>/
-│   │       └── <scene_id>.glb
-│   └── objectnav/
-│       └── mp3d/
-│           └── v1/
-│               └── val/
-│                   ├── val.json.gz
-│                   └── content/
-│                       └── *.json.gz
+├── versioned_data/                          # HM3D scenes
+│   └── hm3d-0.2/
+│       └── hm3d/
+│           ├── hm3d_annotated_basis.scene_dataset_config.json
+│           └── val/
+│               └── <scene_id>/
+│                   ├── <scene_id>.basis.glb
+│                   ├── <scene_id>.basis.navmesh
+│                   ├── <scene_id>.semantic.glb
+│                   └── <scene_id>.semantic.txt
 │
-├── datasets/
-│   └── objectnav_hm3d_v2/
-│       └── val/
-│           ├── val.json.gz
-│           └── content/
-│               └── *.json.gz
-│
-└── versioned_data/
-    └── hm3d-0.2/
-        └── hm3d/
-            ├── hm3d_annotated_basis.scene_dataset_config.json
-            └── val/
-                └── <scene_id>/
-                    ├── <scene_id>.glb
-                    ├── <scene_id>.navmesh
-                    ├── <scene_id>.semantic.glb
-                    └── <scene_id>.semantic.txt
+└── datasets/
+    ├── objectnav_hm3d_v2/                    # HM3D ObjectNav v2 episodes
+    │   └── val/
+    │       ├── val.json.gz
+    │       └── content/*.json.gz
+    │
+    ├── scene_datasets/
+    │   └── mp3d/                             # MP3D (Matterport3D) scenes
+    │       └── <scene_id>/
+    │           └── <scene_id>.glb
+    │
+    └── objectnav/
+        └── mp3d/
+            └── v1/                           # MP3D ObjectNav episodes
+                └── val/
+                    ├── val.json.gz
+                    └── content/*.json.gz
 ```
 
-To switch between HM3D and MP3D, edit the experiment config:
+Paths per dataset (from the configs):
+
+| dataset | scenes                              | episodes                          | config                             |
+| ------- | ----------------------------------- | --------------------------------- | ---------------------------------- |
+| HM3D    | `data/versioned_data/hm3d-0.2/hm3d` | `data/datasets/objectnav_hm3d_v2` | `config/CPnav_5_nano_131.yaml`     |
+| MP3D    | `data/datasets/scene_datasets/mp3d` | `data/datasets/objectnav/mp3d/v1` | `config/CPnav_5_nano_131_mp3d.yaml`|
+
+MP3D scenes are loaded directly from the `.glb` (no scene-dataset config), so
+MP3D ships no `.navmesh` — the simulator recomputes the navmesh from geometry on
+load. HM3D uses its bundled `.basis.navmesh`.
+
+To switch a config between datasets, set the dataset name (`run.sh` picks the
+right config for you, so you usually don't touch this):
 
 ```yaml
 env_cfg:
@@ -123,12 +135,76 @@ env_cfg:
     name: hm3d  # or mp3d
 ```
 
+### Step 6: Download the MP3D (Matterport3D) Dataset
+
+The steps above set up HM3D. For the MP3D experiments you also need the
+Matterport3D scenes and the ObjectNav MP3D episodes.
+
+**Option A — packaged with SG-Nav (simplest).** The
+[SG-Nav repo](https://github.com/bagh2178/SG-Nav) documents an MP3D + ObjectNav
+data setup; follow its data instructions and place the scenes under
+`data/datasets/scene_datasets/mp3d/` and the episodes under
+`data/datasets/objectnav/mp3d/v1/` as in the tree above.
+
+**Option B — official sources.**
+
+- **MP3D scenes:** request access to the Matterport3D dataset
+  (<https://niessner.github.io/Matterport/>), then download the Habitat-ready
+  scenes via the habitat downloader:
+
+  ```bash
+  python -m habitat_sim.utils.datasets_download --uids mp3d --data-path data/
+  ```
+
+  Place them so each scene is `data/datasets/scene_datasets/mp3d/<scene_id>/<scene_id>.glb`.
+- **ObjectNav MP3D episodes:** the Habitat ObjectNav MP3D v1 episodes
+  (`objectnav_mp3d_v1`, from the Habitat data releases) extracted to
+  `data/datasets/objectnav/mp3d/v1/` (with `val/val.json.gz` and `val/content/`).
+
+Only the 11 MP3D `val` scenes referenced by the evaluated episodes are needed.
+
 ## Usage
 
-This repository follows the workflow from the CPNav paper: first run offline
-calibration/search to collect calibration scores, then run the online
-implementation with the selected conformal threshold. The scores gathered
-offline are bounded with the conformal prediction bound using a
+### Quickstart — reproduce the paper runs
+
+The paper evaluates on a **fixed 200-episode, 6-category** set (chair, plant,
+sofa, bed, toilet, tv_monitor) on **HM3D** (seed 43) and **MP3D** (seed 96).
+CPnav's four internal baselines are the *same agent* under a different
+prediction-set mode, so they all share one config per dataset — pick the method
+by name, no per-method config file:
+
+```bash
+conda activate CPnav               # or set OPENAI_API_KEY in .env
+
+bash run.sh <hm3d|mp3d> <method>   # one method, one dataset -> logs/<dataset>_<method>/
+bash run_all.sh <hm3d|mp3d>        # all five methods, sequentially
+```
+
+| method     | flags                              | description                    |
+| ---------- | ---------------------------------- | ------------------------------ |
+| `cpnav`    | `--mode cp_nav --threshold 0.064`  | CPnav, conformal (main method) |
+| `nocal`    | `--mode cp_nav --threshold 0`      | No Calibration                 |
+| `simple`   | `--mode simple_set --alpha 0.3`    | Simple Set                     |
+| `prompt`   | `--mode prompt_set`                | Prompt Set                     |
+| `ensemble` | `--mode ensemble_set --alpha 0.3`  | Ensemble Set (~20 calls/step)  |
+
+```bash
+bash run.sh hm3d cpnav             # CPnav on HM3D
+bash run.sh mp3d ensemble          # Ensemble baseline on MP3D
+```
+
+Only the two configs used for the paper runs live at `config/`
+(`CPnav_5_nano_131.yaml` = HM3D, `CPnav_5_nano_131_mp3d.yaml` = MP3D). Ablation
+configs (no-voxel, sensor-height, propose-if-all-explored) are under
+`config/ablations/`.
+
+### Manual commands
+
+The sections below expose the underlying scripts for one-off runs and offline
+calibration. This repository follows the workflow from the CPNav paper: first
+run offline calibration/search to collect calibration scores, then run the
+online implementation with the selected conformal threshold. The scores
+gathered offline are bounded with the conformal prediction bound using a
 human-specified risk threshold, and the resulting threshold is used by the
 online policy. All commands should be run from the root `CPnav` directory after
 activating the conda environment:
@@ -145,7 +221,7 @@ saves the offline score and best path under the log directory.
 
 ```bash
 python scripts/run_offline.py \
-  --config config/CPnav_5_nano_101.yaml \
+  --config config/CPnav_5_nano_131.yaml \
   --log_dir logs/offline_single \
   --episode 100
 ```
@@ -163,7 +239,7 @@ threshold from the offline stage with `--threshold`.
 
 ```bash
 python scripts/run_online.py \
-  --config config/CPnav_5_nano_101.yaml \
+  --config config/CPnav_5_nano_131.yaml \
   --log_dir logs/online_single \
   --episode 100 \
   --threshold 0.059 \
@@ -186,7 +262,7 @@ sampled episodes in parallel.
 
 ```bash
 python scripts/batch_run_offline.py \
-  --config config/CPnav_5_nano_101.yaml \
+  --config config/CPnav_5_nano_131.yaml \
   --batch_name offline_calibration \
   --n_exp 300 \
   --max_jobs 10 \
@@ -203,7 +279,7 @@ sampled episodes in parallel.
 
 ```bash
 python scripts/batch_run_online.py \
-  --config config/CPnav_5_nano_101.yaml \
+  --config config/CPnav_5_nano_131.yaml \
   --batch_name online_cp_nav \
   --n_exp 100 \
   --max_jobs 15 \

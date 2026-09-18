@@ -29,7 +29,7 @@ class AgentDecision:
 class Runner:
     def __init__(
             self, 
-            cfg_path: str = "config/CPnav_5_nano.yaml", 
+            cfg_path: str = "config/CPnav_5_nano_131.yaml",
             log_dir="logs/", 
             threshold=0,
             mode: Literal["cp_nav", "simple_set", "prompt_set", "ensemble_set"]="cp_nav",
@@ -405,6 +405,78 @@ class Runner:
     
     def has_steps(self):
         return self.env.step_count < int(self.cfg["env_cfg"]["max_steps"])
+
+    # ------------------------------------------------------------------ #
+    # CPNAV online safety set (Eq. 14): gate the forward action by the    #
+    # calibrated threshold. Enforced only for cp_nav; other modes keep    #
+    # their existing behavior. Pure logic so it is unit-testable without  #
+    # the simulator or the VLM API.                                       #
+    # ------------------------------------------------------------------ #
+    @staticmethod
+    def _score_admissible(score, threshold):
+        """True iff `score` meets the safety threshold. None fails open (admissible)."""
+        if score is None:
+            return True
+        try:
+            return float(score) >= float(threshold)
+        except (TypeError, ValueError):
+            return True
+
+    def forward_action_admissible(self, action_idx):
+        """
+        Whether `action_idx` may be executed at the current node under the online
+        safety set C(xi_t) = {a : score(a) >= threshold} (Eq. 14). Enforced only
+        for cp_nav (CPNAV); other modes return True (behavior unchanged).
+        """
+        if self.mode != "cp_nav":
+            return True
+        if action_idx is None or int(action_idx) == 0:
+            return True
+        try:
+            score = self.tree.get_action_score(self.cur_node_id, int(action_idx))
+        except Exception:
+            return True  # fail open: never crash a run on a score-lookup error
+        return self._score_admissible(score, self.threshold)
+
+    def route_decision(self, action_idx, num_sorted_actions):
+        """
+        Decide what to execute for the VLM's chosen `action_idx`, enforcing the
+        CPNAV safety set (Eq. 14) on forward moves. Pure decision logic (no side
+        effects) so it can be smoke-tested without the simulator or the API.
+
+        Returns (kind, idx):
+            ("turnaround", None) - in-place turn at the root
+            ("backtrack",  None) - recover via threshold-respecting tree search
+            ("stop",       None) - root exhausted, nothing admissible remains
+            ("forward",    idx)  - execute proposed action `idx`
+        """
+        # Explicit turn-around at the root.
+        if action_idx == 0 and self.cur_node_id == 0:
+            return ("turnaround", None)
+
+        # VLM asked to backtrack, no proposals available, or gave no action.
+        if (action_idx == 0) or (num_sorted_actions == 0) or (action_idx is None):
+            if self.cur_node_id == 0 and self.tried_step0_turnaround:
+                return ("stop", None)
+            return ("backtrack", None)
+
+        # Forward candidate (clamp to a valid proposed-action index).
+        idx = int(max(1, min(action_idx, num_sorted_actions)))
+
+        # CPNAV safety set: only execute actions whose score >= threshold.
+        if self.mode == "cp_nav" and not self.forward_action_admissible(idx):
+            # The VLM's pick is inadmissible; take the highest-scoring admissible
+            # untried action at this node instead. If C(xi_t) is empty, turn around.
+            alt = self.tree.select_next_action_at(
+                self.cur_node_id, score_threshold=self.threshold, exclude_action0=True
+            )
+            if alt is not None:
+                return ("forward", int(alt))
+            if self.cur_node_id == 0 and self.tried_step0_turnaround:
+                return ("stop", None)
+            return ("backtrack", None)
+
+        return ("forward", idx)
     
     def record_goal(self, obs):
         """

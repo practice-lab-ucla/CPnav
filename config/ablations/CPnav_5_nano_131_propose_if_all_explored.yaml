@@ -9,34 +9,53 @@ env_cls: ObjectNavEnv
 # 2. ENVIRONMENT CONFIGURATION (Dataset & Episode Control)
 # ==============================================================================
 env_cfg:
-  # real_env: true
-  # dataset_root_path: data/datasets/objectnav_hm3d_v2
-  # split: val
+  # ---- DATASET SWITCH ----------------------------------------------------
+  # name: hm3d -> HM3D v2 scenes + ObjectNav HM3D v2 episodes
+  # name: mp3d -> Matterport3D scenes + ObjectNav MP3D episodes
+  dataset:
+    name: hm3d
+    split: val
+    hm3d:
+      scene_dataset_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+      scene_root: data/versioned_data/hm3d-0.2/hm3d
+      episodes_root: data/datasets/objectnav_hm3d_v2
+    mp3d:
+      scene_dataset_config:
+      scene_root: data/datasets/scene_datasets/mp3d
+      episodes_root: data/datasets/objectnav/mp3d/v1
   
   # Episode Control
   num_episodes: 1
-  max_steps: 100
+  max_steps: 200
+  success_threshold: 0.3
+  d_goal: 2.0
+  
+  # Runtime / Logging
+  log_freq: 1
+  instances: 1
+  instance: 0
+  parallel: false
+  name: default
+  port: 5000
 
 # ==============================================================================
 # 3. SIMULATOR CONFIGURATION (Physics & Sensors)
 # ==============================================================================
 sim_cfg:
-  # Scene Data
-  scene_path_root: data/versioned_data/hm3d-0.2/hm3d/
-  scene_config: data/versioned_data/hm3d-0.2/hm3d/hm3d_annotated_basis.scene_dataset_config.json
+  # Scene data is selected by env_cfg.dataset.
   
   # Agent Physics (Sim side)
   agent_height: 0.9
-  agent_radius: 0.13
+  agent_radius: 0.1
   allow_slide: true
   use_goal_image_agent: false
 
   # Sensor Setup
   sensor_cfg:
     height: 0.9
-    pitch: -0.4
-    fov: 101
-    resolution: [360, 640]
+    pitch: -0.45
+    fov: 131
+    resolution: [1080, 1920]
     res_factor: 1
 
 # ==============================================================================
@@ -52,9 +71,9 @@ agent_cfg:
   normalize_action_scores: true
 
   # --- Physical & Safety Constraints (Planner side) ---
-  agent_radius: 0.2
+  agent_radius: 0.1
   clearance_m: 0.05
-  navigability_height_threshold: 0.1
+  navigability_height_threshold: 0.2
   stop_margin_m: 0.05  # Moved from proposer if applicable, or keep in proposer
   
   # --- Movement & Action Space ---
@@ -91,6 +110,7 @@ agent_cfg:
   # ============================================================================
   action_proposer_cfg:
     enable: true
+    propose_if_all_explored: true
     
     # Dimensions
     obstacle_height_m: 0.10
@@ -111,8 +131,3 @@ agent_cfg:
     # Scoring & Filters
     weight: 1.0   # bigger => allow more close angles if unexplored
     image_edge_threshold: 0.04    # reject endpoints near borders
-
-    fx: 261.0680847167969
-    fy: 261.0680847167969
-    cx: 328.0533447265625
-    cy: 175.99295043945312

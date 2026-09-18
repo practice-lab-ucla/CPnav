@@ -17,7 +17,7 @@ parser = argparse.ArgumentParser(description="run online experiment in batch")
 parser.add_argument(
     "--config",
     type=str,
-    default="config/CPnav_5_nano.yaml",
+    default="config/CPnav_5_nano_131.yaml",
     help="path to config file",
 )
 

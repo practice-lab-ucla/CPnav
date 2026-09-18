@@ -217,3 +217,23 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# --- baselines (STRIVE / WMNav) + archives: never commit secrets or big data ---
+.env
+**/.env
+*/logs/
+**/logs/
+*/data/
+**/data/
+CPnav_run_archive/
+*.zip
+*.out
+*.pkl
+*.pth
+*.pt
+**/*.egg-info/
+**/__pycache__/
+baselines/**/fp_review/
+
+# local-only summaries / data to upload manually (never push)
+data_no_push/
