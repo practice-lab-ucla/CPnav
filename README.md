@@ -165,43 +165,7 @@ Only the 11 MP3D `val` scenes referenced by the evaluated episodes are needed.
 
 ## Usage
 
-### Quickstart — reproduce the paper runs
-
-The paper evaluates on a **fixed 200-episode, 6-category** set (chair, plant,
-sofa, bed, toilet, tv_monitor) on **HM3D** (seed 43) and **MP3D** (seed 96).
-CPnav's four internal baselines are the *same agent* under a different
-prediction-set mode, so they all share one config per dataset — pick the method
-by name, no per-method config file:
-
-```bash
-conda activate CPnav               # or set OPENAI_API_KEY in .env
-
-bash run.sh <hm3d|mp3d> <method>   # one method, one dataset -> logs/<dataset>_<method>/
-bash run_all.sh <hm3d|mp3d>        # all five methods, sequentially
-```
-
-| method     | flags                              | description                    |
-| ---------- | ---------------------------------- | ------------------------------ |
-| `cpnav`    | `--mode cp_nav --threshold 0.064`  | CPnav, conformal (main method) |
-| `nocal`    | `--mode cp_nav --threshold 0`      | No Calibration                 |
-| `simple`   | `--mode simple_set --alpha 0.3`    | Simple Set                     |
-| `prompt`   | `--mode prompt_set`                | Prompt Set                     |
-| `ensemble` | `--mode ensemble_set --alpha 0.3`  | Ensemble Set (~20 calls/step)  |
-
-```bash
-bash run.sh hm3d cpnav             # CPnav on HM3D
-bash run.sh mp3d ensemble          # Ensemble baseline on MP3D
-```
-
-Only the two configs used for the paper runs live at `config/`
-(`CPnav_5_nano_131.yaml` = HM3D, `CPnav_5_nano_131_mp3d.yaml` = MP3D). Ablation
-configs (no-voxel, sensor-height, propose-if-all-explored) are under
-`config/ablations/`.
-
-### Manual commands
-
-The sections below expose the underlying scripts for one-off runs and offline
-calibration. This repository follows the workflow from the CPNav paper: first
+This repository follows the workflow from the CPNav paper: first
 run offline calibration/search to collect calibration scores, then run the
 online implementation with the selected conformal threshold. The scores
 gathered offline are bounded with the conformal prediction bound using a
