@@ -6,7 +6,7 @@
 
 ## Installation
 
-This section includes all setup steps: creating the conda environment, setting up the OpenAI API key, and downloading the required datasets.
+Setup has three steps: create the conda environment, add your OpenAI API key, and set up the datasets.
 
 ### Step 1: Create the Conda Environment
 
@@ -41,127 +41,32 @@ For example:
 OPENAI_API_KEY=sk-...
 ```
 
-Do not include spaces around the `=` sign. Do not commit your `.env` file to GitHub. Make sure `.env` is listed in your `.gitignore` file:
+Do not include spaces around the `=` sign. Do not commit your `.env` file to GitHub (it is already listed in `.gitignore`).
 
+### Step 3: Set Up the Datasets
 
-### Dataset Setup Explanation for Step 3 to 6
+Follow the dataset setup in [DATASET.md](DATASET.md). It covers downloading the
+HM3D and MP3D scenes and ObjectNav episodes and placing them under `data/`.
 
-This project follows a data setup similar to the one used in the [VLMnav repository](https://github.com/Jirl-upenn/VLMnav/blob/main/readme.md) for the paper [*End-to-End Navigation with Vision-Language Models: Transforming Spatial Reasoning into Question-Answering*](https://arxiv.org/pdf/2411.05755).
-
-By default, CPNAV uses HM3D scenes with ObjectNav HM3D v2 episodes (Steps 3–5). The configs also include a dataset switch for MP3D/Matterport3D (Step 6), loaded from `data/datasets/scene_datasets/mp3d` with episodes under `data/datasets/objectnav/mp3d/v1`.
-
-### Step 3: Download the Habitat-Matterport 3D Research Dataset
-
-You need access to the Habitat-Matterport 3D Research Dataset:
-
-[https://matterport.com/habitat-matterport-3d-research-dataset](https://matterport.com/habitat-matterport-3d-research-dataset)
-
-After receiving access, generate a Matterport API token:
-
-1. Go to [https://my.matterport.com/settings/account/devtools](https://my.matterport.com/settings/account/devtools)
-2. Generate an API token.
-3. Use the API token ID as your username.
-4. Use the API token secret as your password.
-
-Download the HM3D validation scenes:
-
-```bash
-python -m habitat_sim.utils.datasets_download \
-  --username <api-token-id> \
-  --password <api-token-secret> \
-  --uids hm3d_val_v0.2
-```
-
-### Step 4: Download the ObjectNav Episode Dataset
-
-Download the ObjectNav HM3D v2 episode dataset from:
-
-[https://dl.fbaipublicfiles.com/habitat/data/datasets/objectnav/hm3d/v2/objectnav_hm3d_v2.zip](https://dl.fbaipublicfiles.com/habitat/data/datasets/objectnav/hm3d/v2/objectnav_hm3d_v2.zip)
-
-### Step 5: Organize the Downloaded Dataset
-
-Organize both datasets under `data/` exactly as below — these are the paths the
-configs (`config/CPnav_5_nano_131*.yaml`) read from:
+Once done, your project folder should look like this:
 
 ```text
-data/
-├── versioned_data/                          # HM3D scenes
-│   └── hm3d-0.2/
-│       └── hm3d/
-│           ├── hm3d_annotated_basis.scene_dataset_config.json
-│           └── val/
-│               └── <scene_id>/
-│                   ├── <scene_id>.basis.glb
-│                   ├── <scene_id>.basis.navmesh
-│                   ├── <scene_id>.semantic.glb
-│                   └── <scene_id>.semantic.txt
-│
-└── datasets/
-    ├── objectnav_hm3d_v2/                    # HM3D ObjectNav v2 episodes
-    │   └── val/
-    │       ├── val.json.gz
-    │       └── content/*.json.gz
-    │
-    ├── scene_datasets/
-    │   └── mp3d/                             # MP3D (Matterport3D) scenes
-    │       └── <scene_id>/
-    │           └── <scene_id>.glb
-    │
-    └── objectnav/
-        └── mp3d/
-            └── v1/                           # MP3D ObjectNav episodes
-                └── val/
-                    ├── val.json.gz
-                    └── content/*.json.gz
+CPnav/
+├── .env                          # OpenAI API key (Step 2)
+├── config/                       # experiment configs (HM3D, MP3D, ablations)
+├── CPnav/                        # source code
+├── scripts/                      # offline / online / batch runners
+├── data/                         # datasets (Step 3, see DATASET.md)
+│   ├── versioned_data/
+│   │   └── hm3d-0.2/hm3d/        # HM3D scenes
+│   └── datasets/
+│       ├── objectnav_hm3d_v2/    # HM3D ObjectNav episodes
+│       ├── scene_datasets/mp3d/  # MP3D scenes (MP3D only)
+│       └── objectnav/mp3d/v1/    # MP3D ObjectNav episodes (MP3D only)
+├── environment.yml
+├── run.sh
+└── README.md
 ```
-
-Paths per dataset (from the configs):
-
-| dataset | scenes                              | episodes                          | config                             |
-| ------- | ----------------------------------- | --------------------------------- | ---------------------------------- |
-| HM3D    | `data/versioned_data/hm3d-0.2/hm3d` | `data/datasets/objectnav_hm3d_v2` | `config/CPnav_5_nano_131.yaml`     |
-| MP3D    | `data/datasets/scene_datasets/mp3d` | `data/datasets/objectnav/mp3d/v1` | `config/CPnav_5_nano_131_mp3d.yaml`|
-
-MP3D scenes are loaded directly from the `.glb` (no scene-dataset config), so
-MP3D ships no `.navmesh` — the simulator recomputes the navmesh from geometry on
-load. HM3D uses its bundled `.basis.navmesh`.
-
-To switch a config between datasets, set the dataset name (`run.sh` picks the
-right config for you, so you usually don't touch this):
-
-```yaml
-env_cfg:
-  dataset:
-    name: hm3d  # or mp3d
-```
-
-### Step 6: Download the MP3D (Matterport3D) Dataset
-
-The steps above set up HM3D. For the MP3D experiments you also need the
-Matterport3D scenes and the ObjectNav MP3D episodes.
-
-**Option A — packaged with SG-Nav (simplest).** The
-[SG-Nav repo](https://github.com/bagh2178/SG-Nav) documents an MP3D + ObjectNav
-data setup; follow its data instructions and place the scenes under
-`data/datasets/scene_datasets/mp3d/` and the episodes under
-`data/datasets/objectnav/mp3d/v1/` as in the tree above.
-
-**Option B — official sources.**
-
-- **MP3D scenes:** request access to the Matterport3D dataset
-  (<https://niessner.github.io/Matterport/>), then download the Habitat-ready
-  scenes via the habitat downloader:
-
-  ```bash
-  python -m habitat_sim.utils.datasets_download --uids mp3d --data-path data/
-  ```
-
-  Place them so each scene is `data/datasets/scene_datasets/mp3d/<scene_id>/<scene_id>.glb`.
-- **ObjectNav MP3D episodes:** the Habitat ObjectNav MP3D v1 episodes
-  (`objectnav_mp3d_v1`, from the Habitat data releases) extracted to
-  `data/datasets/objectnav/mp3d/v1/` (with `val/val.json.gz` and `val/content/`).
-
-Only the 11 MP3D `val` scenes referenced by the evaluated episodes are needed.
 
 ## Usage
 
@@ -283,6 +188,6 @@ During deployment, the calibrated safety set determines which actions are admiss
 
 1. Run all commands from the root `CPnav` directory unless stated otherwise.
 2. Make sure `OPENAI_API_KEY` is set in the `.env` file before running VLM-based experiments.
-3. Make sure the HM3D scene files and episode files match the expected `data/` directory structure.
+3. Make sure the scene and episode files match the `data/` layout in [DATASET.md](DATASET.md).
 4. Use `conda activate CPnav` before running scripts.
 5. Do not commit `.env` or any private API keys to GitHub.
