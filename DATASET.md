@@ -53,39 +53,13 @@ This creates `data/datasets/objectnav_hm3d_v2/` (with `train/`, `val/`, `val_min
 
 ## Step 3: Set Up MP3D (only for the MP3D experiments)
 
-CPNAV uses the MP3D package from the [SG-Nav repo](https://github.com/bagh2178/SG-Nav)
-(see its "Step 1 (Dataset)"): one zip (about 665 MB) with the 11 MP3D `val`
-scenes and the ObjectNav MP3D v1 `val` episodes. MP3D is subject to the
-[Matterport3D Terms of Use](https://niessner.github.io/Matterport/); agree to
-them before using the data.
+Download the MP3D data (`MatterPort3D.zip`) from the
+[SG-Nav repo](https://github.com/bagh2178/SG-Nav) (its "Step 1 (Dataset)" section).
 
-1. Download and unzip it anywhere you like (use an absolute path):
+Unzip it and put the two folders at these locations:
 
-   ```bash
-   MP3D_DIR=/path/to/your/mp3d_download
-   mkdir -p "$MP3D_DIR"
-   wget -O "$MP3D_DIR/MatterPort3D.zip" 'https://cloud.tsinghua.edu.cn/f/03e0ca1430a344efa72b/?dl=1'
-   unzip "$MP3D_DIR/MatterPort3D.zip" -d "$MP3D_DIR"
-   ```
-
-   This gives:
-
-   ```text
-   MatterPort3D/
-   ├── mp3d/                     # scenes: <scene_id>/<scene_id>.glb (11 scenes)
-   └── objectnav/mp3d/v1/val/    # episodes: val.json.gz, content/<scene_id>.json.gz
-   ```
-
-2. Link the two folders to the locations the configs read. The download stays
-   where it is:
-
-   ```bash
-   mkdir -p data/datasets/scene_datasets data/datasets/objectnav/mp3d
-   ln -s "$MP3D_DIR/MatterPort3D/mp3d"              data/datasets/scene_datasets/mp3d
-   ln -s "$MP3D_DIR/MatterPort3D/objectnav/mp3d/v1" data/datasets/objectnav/mp3d/v1
-   ```
-
-   Use `mv` instead of `ln -s` if you would rather move the folders.
+- `MatterPort3D/mp3d/` → `data/datasets/scene_datasets/mp3d/`
+- `MatterPort3D/objectnav/mp3d/v1/` → `data/datasets/objectnav/mp3d/v1/`
 
 ## Step 4: Check the `data/` Layout
 
