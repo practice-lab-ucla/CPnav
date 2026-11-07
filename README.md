@@ -160,30 +160,6 @@ python scripts/batch_run_online.py \
 The online batch runner uses the same online arguments as `run_online.py`,
 including `--threshold`, `--mode`, and `--alpha`.
 
-## Method Summary
-
-CPNAV uses a calibrated decision-making pipeline for object-goal navigation.
-
-### Step 1: Action Proposal
-
-Candidate motion primitives are generated from RGB-D observations while enforcing collision safety. The agent uses depth information to identify navigable regions and proposes feasible motion directions.
-
-### Step 2: VLM Scoring
-
-A vision-language model scores each candidate action based on semantic relevance to the target object. These scores estimate which actions are more likely to move the agent toward the goal.
-
-### Step 3: Tree Search
-
-The agent maintains a search tree during exploration. If a branch becomes unpromising or all admissible actions are exhausted, the agent performs local or global backtracking to continue searching from a previous state.
-
-### Step 4: Conformal Prediction
-
-Offline calibration produces a threshold that filters low-confidence actions during online deployment. This helps reduce overconfident but unreliable VLM decisions.
-
-### Step 5: Deployment
-
-During deployment, the calibrated safety set determines which actions are admissible for execution. The agent selects the highest-scoring admissible action and uses backtracking when no reliable action is available.
-
 ## Notes
 
 1. Run all commands from the root `CPnav` directory unless stated otherwise.
