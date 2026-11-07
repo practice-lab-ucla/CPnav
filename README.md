@@ -1,5 +1,7 @@
 # CPNAV
 
+**Project page:** [https://practice-lab-ucla.github.io/papers/cpnav/](https://practice-lab-ucla.github.io/papers/cpnav/)
+
 **CPNAV** is a **Conformal Prediction–augmented Navigation** framework for object-goal search in unseen indoor environments. It uses RGB-D observations to propose collision-free actions, scores them with a vision-language model, and applies conformal prediction to filter unreliable decisions before executing actions through a tree-search policy with backtracking.
 
 ![CPNAV Overview](Images/CPnav.png)
